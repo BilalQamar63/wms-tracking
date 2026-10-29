@@ -1,0 +1,26 @@
+{
+  "name": "wms-tracking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WMS Tracking – Master PTW Tracking Register (Next.js + MongoDB monorepo)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w @wms/web",
+    "build": "npm run build -w @wms/web",
+    "start": "npm run start -w @wms/web",
+    "lint": "npm run lint -w @wms/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "seed:admin": "npm run seed:admin -w @wms/web",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md,css}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,181 @@
+import type {
+  FileKind,
+  FileQuery,
+  FileRecordDTO,
+  ImportResultDTO,
+  Paginated,
+  SessionUser,
+} from '@wms/shared';
+import { ymdToUtcDate } from '@wms/shared';
+import type { FilterQuery } from 'mongoose';
+import { connectDb } from '@/lib/db/mongoose';
+import { parsePermitWorkbook } from '@/lib/excel/workbook-parser';
+import { buildPermitWorkbook } from '@/lib/excel/workbook-builder';
+import { getEnv } from '@/lib/env';
+import { badRequest, forbidden, notFound } from '@/lib/http/errors';
+import { toFileRecordDTO, toUserRef } from '@/lib/mappers';
+import { timestampForFileName } from '@/lib/utils/file-name';
+import { assertObjectId } from '@/lib/utils/object-id';
+import { FileRecordModel, type FileRecordDoc } from '@/models/FileRecord';
+import { createPermitSnapshot, findPermitsForExport, upsertPermits } from './permit.service';
+import type { PermitFilters, PermitImportDayDTO } from '@wms/shared';
+import { PermitModel } from '@/models/Permit';
+
+const POPULATE = { path: 'createdBy', select: 'name isDeleted' };
+const MAX_STORED_ERRORS = 100;
+
+export async function listFiles(query: FileQuery): Promise<Paginated<FileRecordDTO>> {
+  await connectDb();
+  const filter: FilterQuery<FileRecordDoc> = {};
+  if (query.kind) filter.kind = query.kind;
+  if (query.dateFrom || query.dateTo) {
+    filter.createdAt = {
+      ...(query.dateFrom ? { $gte: ymdToUtcDate(query.dateFrom) } : {}),
+      // inclusive end-of-day
+      ...(query.dateTo ? { $lt: new Date(ymdToUtcDate(query.dateTo).getTime() + 86_400_000) } : {}),
+    };
+  }
+
+  const [docs, total] = await Promise.all([
+    FileRecordModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((query.page - 1) * query.limit)
+      .limit(query.limit)
+      .populate(POPULATE)
+      .select('-importErrors')
+      .lean<FileRecordDoc[]>(),
+    FileRecordModel.countDocuments(filter),
+  ]);
+
+  return {
+    items: docs.map(toFileRecordDTO),
+    page: query.page,
+    limit: query.limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / query.limit)),
+  };
+}
+
+export async function listPermitImportDays(): Promise<PermitImportDayDTO[]> {
+  await connectDb();
+  const files = await FileRecordModel.find({ kind: 'import' })
+    .sort({ createdAt: -1 })
+    .select('_id originalName createdAt snapshotAvailable')
+    .lean<Array<Pick<FileRecordDoc, '_id' | 'originalName' | 'createdAt' | 'snapshotAvailable'>>>();
+  if (files.length === 0) return [];
+
+  const counts = await PermitModel.aggregate<{ _id: string; total: number; closed: number }>([
+    { $match: { importBatchId: { $exists: true } } },
+    {
+      $group: {
+        _id: { $toString: '$importBatchId' },
+        total: { $sum: 1 },
+        closed: { $sum: { $cond: [{ $eq: ['$status', 'Closed'] }, 1, 0] } },
+      },
+    },
+  ]);
+  const countsById = new Map(counts.map((count) => [count._id, count]));
+  const grouped = new Map<string, PermitImportDayDTO>();
+  const dateFormatter = new Intl.DateTimeFormat('en', {
+    timeZone: getEnv().APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  for (const file of files) {
+    const id = String(file._id);
+    const count = countsById.get(id);
+    const dateParts = dateFormatter.formatToParts(file.createdAt);
+    const dateValues = Object.fromEntries(dateParts.map((part) => [part.type, part.value]));
+    const date = `${dateValues.year}-${dateValues.month}-${dateValues.day}`;
+    const day = grouped.get(date) ?? { date, total: 0, closed: 0, batches: [] };
+    const batch = {
+      id,
+      originalName: file.originalName,
+      createdAt: file.createdAt.toISOString(),
+      total: count?.total ?? 0,
+      closed: count?.closed ?? 0,
+      available: file.snapshotAvailable === true,
+    };
+    day.batches.push(batch);
+    day.total += batch.total;
+    day.closed += batch.closed;
+    grouped.set(date, day);
+  }
+
+  return [...grouped.values()];
+}
+
+async function getFileDoc(id: string): Promise<FileRecordDoc> {
+  assertObjectId(id, 'File');
+  await connectDb();
+  const doc = await FileRecordModel.findById(id).populate(POPULATE).lean<FileRecordDoc>();
+  if (!doc) throw notFound('File');
+  return doc;
+}
+
+/** Imports a workbook and stores its permit snapshot and history metadata in MongoDB. */
+export async function importPermitFile(file: File, user: SessionUser): Promise<ImportResultDTO> {
+  const maxBytes = getEnv().MAX_UPLOAD_MB * 1024 * 1024;
+  if (!file.name.toLowerCase().endsWith('.xlsx'))
+    throw badRequest('Only .xlsx files are supported');
+  if (file.size === 0) throw badRequest('The uploaded file is empty');
+  if (file.size > maxBytes) throw badRequest(`File is larger than ${getEnv().MAX_UPLOAD_MB} MB`);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const parsed = await parsePermitWorkbook(buffer);
+
+  const { inserted, updated } = await upsertPermits(parsed.rows, user.id);
+  const stats = { total: parsed.totalRows, inserted, updated, failed: parsed.errors.length };
+
+  const record = await FileRecordModel.create({
+    kind: 'import',
+    originalName: file.name,
+    bytes: file.size,
+    rowCount: parsed.totalRows,
+    snapshotAvailable: true,
+    stats,
+    importErrors: parsed.errors.slice(0, MAX_STORED_ERRORS),
+    createdBy: user.id,
+  });
+  await createPermitSnapshot(parsed.rows, String(record._id), user.id);
+
+  const saved = await getFileDoc(String(record._id));
+  return { file: toFileRecordDTO(saved), stats, errors: parsed.errors.slice(0, MAX_STORED_ERRORS) };
+}
+
+/** Builds an Excel download and records export metadata in MongoDB. */
+export async function exportPermitFile(
+  filters: PermitFilters,
+  user: SessionUser,
+): Promise<{ buffer: Buffer; fileName: string }> {
+  const permits = await findPermitsForExport(filters, filters.batchId);
+  const buffer = await buildPermitWorkbook(permits);
+  const fileName = `PTW-Register_${timestampForFileName()}.xlsx`;
+
+  const record = await FileRecordModel.create({
+    kind: 'export' satisfies FileKind,
+    originalName: fileName,
+    bytes: buffer.length,
+    rowCount: permits.length,
+    createdBy: user.id,
+  });
+
+  return { buffer, fileName };
+}
+
+export async function getFileDetails(id: string): Promise<FileRecordDTO> {
+  return toFileRecordDTO(await getFileDoc(id));
+}
+
+/** Only admins or the user who created the record may delete it. */
+export async function deleteFile(id: string, user: SessionUser): Promise<void> {
+  const doc = await getFileDoc(id);
+  const ownerId = doc.createdBy ? toUserRef(doc.createdBy)?.id : undefined;
+
+  if (user.role !== 'admin' && ownerId !== user.id) throw forbidden();
+
+  if (doc.kind === 'import') await PermitModel.deleteMany({ importBatchId: id });
+  await FileRecordModel.deleteOne({ _id: id });
+}
