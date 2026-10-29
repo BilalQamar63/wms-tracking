@@ -55,12 +55,7 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   workbook.creator = 'WMS Tracking';
   workbook.created = new Date();
 
-  const validityEndIndex = PERMIT_FIELD_LIST.findIndex((field) => field.key === 'ptwValidity');
-  if (validityEndIndex < 0) throw new Error('PTW Validity field is missing from the permit fields');
-  const freezeColumns = validityEndIndex + 2;
-  const sheet = workbook.addWorksheet(SHEET_NAME, {
-    views: [{ state: 'frozen', xSplit: freezeColumns, ySplit: HEADER_ROW }],
-  });
+  const sheet = workbook.addWorksheet(SHEET_NAME);
   const lists = addListsSheet(workbook);
   const lastColumn = PERMIT_FIELD_LIST.length + 1;
 
@@ -96,7 +91,7 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   }
 
   // Header
-  const headers = [SR_NO_HEADER, ...PERMIT_FIELD_LIST.map((f) => f.header)];
+  const headers = [SR_NO_HEADER, ...PERMIT_FIELD_LIST.map((field) => field.header)];
   const headerRow = sheet.getRow(HEADER_ROW);
   headers.forEach((header, index) => {
     const cell = headerRow.getCell(index + 1);
@@ -117,6 +112,7 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   permits.forEach((permit, rowIndex) => {
     const row = sheet.getRow(FIRST_DATA_ROW + rowIndex);
     row.getCell(1).value = permit.srNo;
+    let certificateText = '';
     PERMIT_FIELD_LIST.forEach((field, index) => {
       const raw =
         field.fixedValue ??
@@ -125,6 +121,11 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
           : (permit[field.key as keyof PermitDTO] as string | string[] | undefined));
       if (!raw) return;
       const cell = row.getCell(index + 2);
+      if (field.key === 'certificateType' && Array.isArray(raw)) {
+        certificateText = raw.join(', ');
+        cell.value = certificateText;
+        return;
+      }
       if (field.type === 'date') {
         cell.value = ymdToUtcDate(raw as string);
         cell.numFmt = DATE_FORMAT;
@@ -132,6 +133,13 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
         cell.value = Array.isArray(raw) ? raw.join('; ') : raw;
       }
     });
+    const certificateFieldIndex = PERMIT_FIELD_LIST.findIndex(
+      (field) => field.key === 'certificateType',
+    );
+    if (certificateFieldIndex >= 0 && certificateText) {
+      const width = PERMIT_FIELD_LIST[certificateFieldIndex]?.width ?? 36;
+      row.height = Math.max(32, Math.ceil(certificateText.length / width) * 16 + 4);
+    }
   });
 
   // Styling + dropdown validation for data rows and spare rows
@@ -147,29 +155,30 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
       const field = c > 1 ? PERMIT_FIELD_LIST[c - 2] : undefined;
       if (!field) continue;
       if (field.type === 'date') cell.numFmt = DATE_FORMAT;
-      if ((field.type === 'select' || field.type === 'radio') && lists.has(field.key)) {
+      if (
+        (field.type === 'select' || field.type === 'radio' || field.type === 'multiselect') &&
+        lists.has(field.key)
+      ) {
         cell.dataValidation = {
           type: 'list',
           allowBlank: true,
-          showErrorMessage: true,
+          showErrorMessage: field.type !== 'multiselect',
           errorStyle: 'stop',
           errorTitle: 'Invalid value',
           error: `Please choose a value from the list for "${field.header}".`,
           formulae: [lists.get(field.key) as string],
-        };
-      }
-      if (field.type === 'multiselect') {
-        cell.dataValidation = {
-          type: 'textLength',
-          operator: 'lessThanOrEqual',
-          formulae: [1000],
-          allowBlank: true,
-          showInputMessage: true,
-          promptTitle: 'Multiple certificates',
-          prompt: 'Enter multiple values separated by semicolons.',
+          ...(field.type === 'multiselect'
+            ? {
+                showInputMessage: true,
+                promptTitle: 'Multiple certificates',
+                prompt:
+                  'Choose one certificate, then enter additional selections separated by commas.',
+              }
+            : {}),
         };
       }
     }
+    if (row.height === undefined) row.height = 32;
   }
 
   sheet.autoFilter = {

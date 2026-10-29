@@ -104,7 +104,7 @@ export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
               {COLUMNS.map((column) => (
                 <td
                   key={column.key}
-                  className={`max-w-[16rem] truncate whitespace-nowrap px-4 py-3 text-slate-700 ${SECTION_STYLES[column.section].cell}`}
+                  className={`max-w-[16rem] px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell}`}
                 >
                   {renderCell(permit, column.key, column.type)}
                 </td>

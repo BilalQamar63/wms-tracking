@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import {
+  CERTIFICATE_TYPES,
   OPTION_ALIASES,
   PERMIT_FIELD_LIST,
   SR_NO_HEADER,
@@ -30,6 +31,12 @@ const normalizeHeader = (value: string): string => value.toLowerCase().replace(/
 const HEADER_LOOKUP = new Map<string, (typeof PERMIT_FIELD_LIST)[number]>(
   PERMIT_FIELD_LIST.map((field) => [normalizeHeader(field.header), field]),
 );
+const CERTIFICATE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'certificateType');
+if (CERTIFICATE_FIELD) {
+  CERTIFICATE_TYPES.forEach((_, index) => {
+    HEADER_LOOKUP.set(normalizeHeader(`Certificate Type ${index + 1}`), CERTIFICATE_FIELD);
+  });
+}
 const COMPANY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'company');
 if (COMPANY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Company'), COMPANY_FIELD);
 const WORK_ACTIVITY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'workActivity');
@@ -164,10 +171,14 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
         if (ymd) candidate[field.key] = ymd;
         else messages.push(`${field.header}: "${text}" is not a valid date`);
       } else if (field.type === 'multiselect' && field.options) {
-        candidate[field.key] = text
+        const values = text
           .split(/[;|,\r\n]+/)
           .map((option) => canonicalOption(option.trim(), field.options ?? []))
           .filter(Boolean);
+        const existing = candidate[field.key];
+        candidate[field.key] = [
+          ...new Set([...(Array.isArray(existing) ? existing : []), ...values]),
+        ];
       } else if ((field.type === 'select' || field.type === 'radio') && field.options) {
         const normalized = canonicalOption(text, field.options);
         candidate[field.key] =
