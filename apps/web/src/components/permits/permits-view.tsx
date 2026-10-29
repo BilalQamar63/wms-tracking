@@ -40,7 +40,11 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PermitDTO | null>(null);
   const [deleting, setDeleting] = useState<PermitDTO | null>(null);
-  const [deletingBatch, setDeletingBatch] = useState<{ id: string; name: string } | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState<{
+    id: string;
+    name: string;
+    hasSnapshot: boolean;
+  } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -140,7 +144,7 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
     <>
       <PageHeader
         title="Meram Master PTW Tracking Register"
-        description="Manage the current register or edit a dated imported register, then export its updated Excel file."
+        description="Manage the current permit register. Excel imports are reviewed and merged into this register; older snapshots remain available in history."
         actions={
           <>
             {canManage && (
@@ -180,7 +184,7 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
           setFormOpen(true);
         }}
         onExportBatch={exportBatch}
-        onDeleteBatch={(id, name) => setDeletingBatch({ id, name })}
+        onDeleteBatch={(id, name, hasSnapshot) => setDeletingBatch({ id, name, hasSnapshot })}
         exportingBatchId={exportingBatchId}
         onSelect={(id) => {
           setViewMode('snapshot');
@@ -209,7 +213,7 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
             </div>
           ) : (
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Current register — separate from the dated imported workbooks above.
+              Current register — new Excel imports are applied here after review.
             </div>
           )}
           <PermitFilters value={filters} onChange={setFilters} />
@@ -245,8 +249,7 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
         </section>
       ) : (
         <EmptyState title="Choose a register">
-          Select an imported workbook above to view its dated permits, or choose the current
-          register. New permits can be added directly to the selected workbook.
+          Open the current register or select an older dated snapshot from history.
         </EmptyState>
       )}
 
@@ -266,9 +269,11 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
           open={importOpen}
           onClose={() => setImportOpen(false)}
           onImported={() => {
-            setViewMode(null);
+            setViewMode('current');
             setSelectedBatchId(null);
-            refresh();
+            setFilters(EMPTY_PERMIT_FILTERS);
+            setPage(1);
+            mutate((key) => typeof key === 'string' && key.startsWith('/api/permits'));
             refreshFileHistory();
           }}
         />
@@ -296,8 +301,10 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
             onConfirm={confirmDeleteBatch}
             onClose={() => setDeletingBatch(null)}
           >
-            Delete <b>{deletingBatch?.name}</b> and all permits saved in this imported snapshot?
-            This cannot be undone.
+            Delete <b>{deletingBatch?.name}</b>
+            {deletingBatch?.hasSnapshot
+              ? ' and all permits saved in this imported snapshot? This cannot be undone.'
+              : '? This removes only the upload history entry; current register permits are not affected.'}
           </ConfirmDialog>
         </>
       )}

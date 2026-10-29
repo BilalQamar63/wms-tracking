@@ -63,6 +63,21 @@ export function getPlanDaysRemaining(endDate: string, now = new Date()): number 
   return daysUntilEnd === null ? null : Math.max(0, daysUntilEnd + 1);
 }
 
+/** Returns the current local calendar date as `YYYY-MM-DD`. */
+export function getTodayYmd(now = new Date()): string {
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Formats plan validity for tables and exports, without a future-start countdown. */
+export function formatPlanValidity(endDate?: string | Date | null, now = new Date()): string {
+  const ymd = toDateInputValue(endDate);
+  if (!ymd) return '';
+  const days = getPlanDaysRemaining(ymd, now);
+  if (days === null) return '';
+  if (days === 0) return 'Expired';
+  return `${days} ${days === 1 ? 'day' : 'days'} left`;
+}
+
 /** Formats dates as `DD-MM-YYYY` (e.g. 24-03-2026). */
 export function formatDisplayDate(value?: string | Date | null): string {
   const ymd = toDateInputValue(value);

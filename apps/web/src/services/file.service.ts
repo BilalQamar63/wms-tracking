@@ -2,6 +2,8 @@ import type {
   FileKind,
   FileQuery,
   FileRecordDTO,
+  ImportFieldApproval,
+  ImportPreviewDTO,
   ImportResultDTO,
   Paginated,
   SessionUser,
@@ -17,7 +19,11 @@ import { toFileRecordDTO } from '@/lib/mappers';
 import { timestampForFileName } from '@/lib/utils/file-name';
 import { assertObjectId } from '@/lib/utils/object-id';
 import { FileRecordModel, type FileRecordDoc } from '@/models/FileRecord';
-import { createPermitSnapshot, findPermitsForExport, upsertPermits } from './permit.service';
+import {
+  applyReviewedImport,
+  findPermitsForExport,
+  previewCurrentRegisterImport,
+} from './permit.service';
 import type { PermitFilters, PermitImportDayDTO } from '@wms/shared';
 import { PermitModel } from '@/models/Permit';
 
@@ -60,8 +66,12 @@ export async function listPermitImportDays(): Promise<PermitImportDayDTO[]> {
   await connectDb();
   const files = await FileRecordModel.find({ kind: 'import' })
     .sort({ createdAt: -1 })
-    .select('_id originalName createdAt snapshotAvailable')
-    .lean<Array<Pick<FileRecordDoc, '_id' | 'originalName' | 'createdAt' | 'snapshotAvailable'>>>();
+    .select('_id originalName createdAt snapshotAvailable stats')
+    .lean<
+      Array<
+        Pick<FileRecordDoc, '_id' | 'originalName' | 'createdAt' | 'snapshotAvailable' | 'stats'>
+      >
+    >();
   if (files.length === 0) return [];
 
   const counts = await PermitModel.aggregate<{ _id: string; total: number; closed: number }>([
@@ -97,6 +107,7 @@ export async function listPermitImportDays(): Promise<PermitImportDayDTO[]> {
       total: count?.total ?? 0,
       closed: count?.closed ?? 0,
       available: file.snapshotAvailable === true,
+      stats: file.stats,
     };
     day.batches.push(batch);
     day.total += batch.total;
@@ -115,18 +126,45 @@ async function getFileDoc(id: string): Promise<FileRecordDoc> {
   return doc;
 }
 
-/** Imports a workbook and stores its permit snapshot and history metadata in MongoDB. */
-export async function importPermitFile(file: File, user: SessionUser): Promise<ImportResultDTO> {
+function assertValidImportFile(file: File): void {
   const maxBytes = getEnv().MAX_UPLOAD_MB * 1024 * 1024;
   if (!file.name.toLowerCase().endsWith('.xlsx'))
     throw badRequest('Only .xlsx files are supported');
   if (file.size === 0) throw badRequest('The uploaded file is empty');
   if (file.size > maxBytes) throw badRequest(`File is larger than ${getEnv().MAX_UPLOAD_MB} MB`);
+}
 
+async function parseImportFile(file: File) {
+  assertValidImportFile(file);
   const buffer = Buffer.from(await file.arrayBuffer());
-  const parsed = await parsePermitWorkbook(buffer);
+  return parsePermitWorkbook(buffer);
+}
 
-  const { inserted, updated } = await upsertPermits(parsed.rows, user.id);
+/** Parses an upload and previews changes without modifying the current register. */
+export async function previewPermitFile(file: File): Promise<ImportPreviewDTO> {
+  const parsed = await parseImportFile(file);
+  return previewCurrentRegisterImport(
+    parsed.rows,
+    file.name,
+    parsed.totalRows,
+    parsed.errors.slice(0, MAX_STORED_ERRORS),
+  );
+}
+
+/** Applies the reviewed fields and records an audit entry, without creating a permit snapshot. */
+export async function commitPermitFile(
+  file: File,
+  user: SessionUser,
+  approvals: ImportFieldApproval[],
+  addRowNumbers: number[],
+): Promise<ImportResultDTO> {
+  const parsed = await parseImportFile(file);
+  const { inserted, updated } = await applyReviewedImport(
+    parsed.rows,
+    approvals,
+    addRowNumbers,
+    user.id,
+  );
   const stats = { total: parsed.totalRows, inserted, updated, failed: parsed.errors.length };
 
   const record = await FileRecordModel.create({
@@ -134,12 +172,11 @@ export async function importPermitFile(file: File, user: SessionUser): Promise<I
     originalName: file.name,
     bytes: file.size,
     rowCount: parsed.totalRows,
-    snapshotAvailable: true,
+    snapshotAvailable: false,
     stats,
     importErrors: parsed.errors.slice(0, MAX_STORED_ERRORS),
     createdBy: user.id,
   });
-  await createPermitSnapshot(parsed.rows, String(record._id), user.id);
 
   const saved = await getFileDoc(String(record._id));
   return { file: toFileRecordDTO(saved), stats, errors: parsed.errors.slice(0, MAX_STORED_ERRORS) };

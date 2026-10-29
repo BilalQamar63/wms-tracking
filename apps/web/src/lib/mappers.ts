@@ -1,5 +1,6 @@
 import type { Types } from 'mongoose';
 import {
+  formatPlanValidity,
   PERMIT_FIELD_LIST,
   ymdToUtcDate,
   type FileRecordDTO,
@@ -33,17 +34,29 @@ export function toPermitDTO(doc: PermitDoc): PermitDTO {
   };
 
   for (const field of PERMIT_FIELD_LIST) {
+    if (field.fixedValue !== undefined) {
+      (dto as unknown as Record<string, unknown>)[field.key] = field.fixedValue;
+      continue;
+    }
+    if (field.type === 'computed') {
+      (dto as unknown as Record<string, unknown>)[field.key] = formatPlanValidity(
+        doc.planValidEndDate,
+      );
+      continue;
+    }
     const value = doc[field.key as keyof PermitDoc];
     if (value === undefined || value === null) continue;
     (dto as unknown as Record<string, unknown>)[field.key] =
       field.type === 'date'
         ? (value as Date).toISOString()
-        : field.type === 'multiselect' && typeof value === 'string'
-          ? value
-              .split(/[;|,\r\n]+/)
-              .map((item) => item.trim())
-              .filter(Boolean)
-          : value;
+        : field.key === 'status' && value === 'Not Start Yet'
+          ? 'Not Closed'
+          : field.type === 'multiselect' && typeof value === 'string'
+            ? value
+                .split(/[;|,\r\n]+/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : value;
   }
   return dto;
 }
@@ -58,7 +71,11 @@ export function permitInputToUpdate(input: PermitInput): {
 
   for (const field of PERMIT_FIELD_LIST) {
     const value = input[field.key as keyof PermitInput];
-    if (value === undefined || value === '') {
+    if (field.type === 'computed') {
+      unset[field.key] = 1;
+    } else if (field.fixedValue !== undefined) {
+      set[field.key] = field.fixedValue;
+    } else if (value === undefined || value === '') {
       unset[field.key] = 1;
     } else {
       set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;

@@ -28,7 +28,11 @@ interface Props {
 function toFormValues(permit: PermitDTO | null): PermitInput {
   const values: Record<string, string | string[] | undefined> = {};
   for (const field of PERMIT_FIELD_LIST) {
-    let raw = permit?.[field.key as keyof PermitDTO] as string | string[] | undefined;
+    let raw =
+      field.fixedValue ??
+      (permit?.[field.key as keyof PermitDTO] as string | string[] | undefined) ??
+      field.defaultValue;
+    if (field.type === 'computed') raw = undefined;
     if (field.type === 'multiselect' && typeof raw === 'string') {
       raw = raw
         .split(/[;|,\r\n]+/)
@@ -47,9 +51,10 @@ function toFormValues(permit: PermitDTO | null): PermitInput {
             : '';
   }
   if (!permit) {
-    values.status = 'Not Start Yet';
+    values.status = 'Not Closed';
     values.approvedByPtwc = DEFAULT_PTWC_APPROVER;
   }
+  if (permit?.status === 'Not Start Yet') values.status = 'Not Closed';
   return values as PermitInput;
 }
 
@@ -108,7 +113,8 @@ export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved
     >
       <form id="permit-form" onSubmit={handleSubmit(onSubmit)} noValidate>
         <div className="mb-5 rounded-lg border border-brand-100 bg-brand-50/60 px-4 py-3 text-sm text-brand-900">
-          Plan validity is 14 calendar days. Choosing a start date fills the read-only end date
+          Planned start dates cannot be in the future. PTW closed dates may be in the future. Plan
+          validity is 14 calendar days; choosing a start date fills the read-only end date
           automatically.
         </div>
         <PermitFormFields register={register} setValue={setValue} errors={errors} />

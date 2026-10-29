@@ -75,6 +75,37 @@ export interface ImportResultDTO {
   errors: ImportRowError[];
 }
 
+export interface ImportPreviewFieldDTO {
+  key: string;
+  header: string;
+  type: string;
+  oldValue: string | string[] | null;
+  newValue: string | string[] | null;
+}
+
+export interface ImportPreviewRowDTO {
+  rowNumber: number;
+  action: 'update' | 'add';
+  newPtwNumber?: string;
+  existingSrNo?: number;
+  fields: ImportPreviewFieldDTO[];
+}
+
+export interface ImportPreviewDTO {
+  fileName: string;
+  totalRows: number;
+  rows: ImportPreviewRowDTO[];
+  errors: ImportRowError[];
+}
+
+export interface ImportFieldApproval {
+  rowNumber: number;
+  fields: Array<{
+    key: string;
+    expectedOldValue: string | string[] | null;
+  }>;
+}
+
 export interface PermitImportBatchDTO {
   id: string;
   originalName: string;
@@ -82,6 +113,7 @@ export interface PermitImportBatchDTO {
   total: number;
   closed: number;
   available: boolean;
+  stats?: ImportStats;
 }
 
 export interface PermitImportDayDTO {

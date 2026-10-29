@@ -89,6 +89,11 @@ function canonicalOption(raw: string, options: readonly string[]): string {
   const lower = raw.toLowerCase();
   const match = options.find((option) => option.toLowerCase() === lower);
   if (match) return match;
+  const compact = lower.replace(/[^a-z0-9]/g, '');
+  const normalizedMatch = options.find(
+    (option) => option.toLowerCase().replace(/[^a-z0-9]/g, '') === compact,
+  );
+  if (normalizedMatch) return normalizedMatch;
   const alias = OPTION_ALIASES[lower];
   return alias && options.includes(alias) ? alias : raw;
 }
@@ -147,6 +152,7 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
     header.columns.forEach((key, colNumber) => {
       const field = HEADER_LOOKUP.get(key);
       if (!field) return; // Sr No is system managed – ignored on import.
+      if (field.type === 'computed') return;
 
       const primitive = toPrimitive(excelRow.getCell(colNumber).value);
       const text = toText(primitive);
@@ -163,7 +169,11 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
           .map((option) => canonicalOption(option.trim(), field.options ?? []))
           .filter(Boolean);
       } else if ((field.type === 'select' || field.type === 'radio') && field.options) {
-        candidate[field.key] = canonicalOption(text, field.options);
+        const normalized = canonicalOption(text, field.options);
+        candidate[field.key] =
+          field.key === 'company' && field.defaultValue && !field.options.includes(normalized)
+            ? field.defaultValue
+            : normalized;
       } else {
         candidate[field.key] = text;
       }
@@ -171,7 +181,18 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
 
     if (!hasData) continue;
     totalRows += 1;
-    if (typeof candidate.planValidStartDate === 'string') {
+    if (PROJECT_NUMBER_FIELD?.fixedValue) {
+      candidate[PROJECT_NUMBER_FIELD.key] = PROJECT_NUMBER_FIELD.fixedValue;
+    }
+    for (const field of PERMIT_FIELD_LIST) {
+      if (field.defaultValue && candidate[field.key] === undefined) {
+        candidate[field.key] = field.defaultValue;
+      }
+    }
+    if (
+      typeof candidate.planValidStartDate === 'string' &&
+      typeof candidate.planValidEndDate !== 'string'
+    ) {
       candidate.planValidEndDate = addDaysToYmd(candidate.planValidStartDate, 13);
     }
 
@@ -196,5 +217,29 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
     }
   }
 
-  return { rows, errors, totalRows };
+  const rowsByPtwNumber = new Map<string, ParsedPermitRow[]>();
+  for (const row of rows) {
+    const number = row.data.newPtwNumber?.trim().toLowerCase();
+    if (!number) continue;
+    const duplicates = rowsByPtwNumber.get(number) ?? [];
+    duplicates.push(row);
+    rowsByPtwNumber.set(number, duplicates);
+  }
+  const duplicateRowNumbers = new Set<number>();
+  for (const duplicates of rowsByPtwNumber.values()) {
+    if (duplicates.length < 2) continue;
+    for (const duplicate of duplicates) {
+      duplicateRowNumbers.add(duplicate.rowNumber);
+      errors.push({
+        row: duplicate.rowNumber,
+        messages: [`New PTW Number "${duplicate.data.newPtwNumber}" appears more than once`],
+      });
+    }
+  }
+
+  return {
+    rows: rows.filter((row) => !duplicateRowNumbers.has(row.rowNumber)),
+    errors,
+    totalRows,
+  };
 }

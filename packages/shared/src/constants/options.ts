@@ -14,6 +14,7 @@ export const SUB_CONTRACTORS = [
   'TARGET',
   'AG POWER',
   'PETROJECT PKG4',
+  'PETROJECT-LLP',
   'PENTA GLOBAL',
   'NBTC',
   'SINOPEC5TH',
@@ -65,7 +66,7 @@ export const PLANT_DIVISIONS = [
 
 export const YES_NO = ['Yes', 'No'] as const;
 
-export const PTW_STATUSES = ['Not Start Yet', 'Not Closed', 'Closed'] as const;
+export const PTW_STATUSES = ['Not Closed', 'Closed'] as const;
 
 export const WORK_PLANNING_TYPES = ['Planned', 'Emergency'] as const;
 
@@ -83,4 +84,5 @@ export const OPTION_ALIASES: Readonly<Record<string, string>> = {
   commisioning: 'Commissioning',
   'steel structures': 'Steel Structure',
   equipment: 'Equipments',
+  'not start yet': 'Not Closed',
 };

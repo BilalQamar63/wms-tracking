@@ -6,6 +6,7 @@ import {
   addDaysToYmd,
   FORM_SECTIONS,
   PERMIT_FIELD_LIST,
+  getTodayYmd,
   type PermitFieldDef,
   type PermitInput,
 } from '@wms/shared';
@@ -54,7 +55,15 @@ function FieldControl({
         </div>
       );
     case 'select':
-      return <Select id={id} options={field.options ?? []} invalid={invalid} {...register(name)} />;
+      return (
+        <Select
+          id={id}
+          options={field.options ?? []}
+          invalid={invalid}
+          defaultValue={field.defaultValue}
+          {...register(name)}
+        />
+      );
     case 'radio':
       return (
         <div className="flex flex-wrap gap-x-5 gap-y-2" role="radiogroup" aria-label={field.header}>
@@ -78,6 +87,11 @@ function FieldControl({
         <Input
           id={id}
           type="date"
+          max={
+            field.key === 'planValidEndDate' || field.key === 'closedDate'
+              ? undefined
+              : getTodayYmd()
+          }
           invalid={invalid}
           {...registration}
           readOnly={field.key === 'planValidEndDate'}
@@ -99,8 +113,18 @@ function FieldControl({
     }
     case 'textarea':
       return <Textarea id={id} invalid={invalid} {...register(name)} />;
-    default:
-      return <Input id={id} type="text" invalid={invalid} {...register(name)} />;
+    case 'text':
+      return (
+        <Input
+          id={id}
+          type="text"
+          invalid={invalid}
+          readOnly={field.fixedValue !== undefined}
+          {...register(name)}
+        />
+      );
+    case 'computed':
+      return null;
   }
 }
 
@@ -109,7 +133,9 @@ export function PermitFormFields({ register, setValue, errors }: Props) {
   return (
     <div className="space-y-6">
       {FORM_SECTIONS.map((section) => {
-        const fields = PERMIT_FIELD_LIST.filter((f) => f.section === section.id);
+        const fields = PERMIT_FIELD_LIST.filter(
+          (field) => field.section === section.id && field.type !== 'computed',
+        );
         return (
           <fieldset key={section.id}>
             <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">

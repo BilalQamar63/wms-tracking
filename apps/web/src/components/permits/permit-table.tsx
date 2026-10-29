@@ -39,6 +39,7 @@ function renderCell(permit: PermitDTO, key: string, type: string) {
   const value = permit[key as keyof PermitDTO] as string | string[] | undefined;
   if (key === 'status')
     return <StatusBadge status={typeof value === 'string' ? value : undefined} />;
+  if (key === 'ptwValidity') return <PlanCountdown endDate={permit.planValidEndDate} />;
   if (!value) return <span className="text-slate-300">—</span>;
   if (type === 'date') return formatDisplayDate(value as string);
   return Array.isArray(value) ? value.join(', ') : value;
@@ -71,7 +72,7 @@ export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
               {FORM_SECTIONS[1]?.title}
             </th>
             <th
-              colSpan={closureColumns + (canManage ? 2 : 1)}
+              colSpan={closureColumns + (canManage ? 1 : 0)}
               className={`border-b border-emerald-100 px-4 py-2 text-left ${SECTION_STYLES.closure.header}`}
             >
               {FORM_SECTIONS[2]?.title}
@@ -87,9 +88,6 @@ export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
                 {column.header}
               </th>
             ))}
-            <th className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES.closure.cell}`}>
-              Plan countdown
-            </th>
             {canManage && (
               <th className={`px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}>Actions</th>
             )}
@@ -111,12 +109,6 @@ export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
                   {renderCell(permit, column.key, column.type)}
                 </td>
               ))}
-              <td className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES.closure.cell}`}>
-                <PlanCountdown
-                  startDate={permit.planValidStartDate}
-                  endDate={permit.planValidEndDate}
-                />
-              </td>
               {canManage && (
                 <td
                   className={`whitespace-nowrap px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}

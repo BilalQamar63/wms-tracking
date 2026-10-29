@@ -19,7 +19,7 @@ interface Props {
   onSelectCurrent: () => void;
   onAddPermit: (batchId: string) => void;
   onExportBatch: (batchId: string) => void;
-  onDeleteBatch: (batchId: string, fileName: string) => void;
+  onDeleteBatch: (batchId: string, fileName: string, hasSnapshot: boolean) => void;
   exportingBatchId: string | null;
 }
 
@@ -49,8 +49,8 @@ export function ImportHistory({
           Imported register history
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Each uploaded workbook is separate. Select it to view its permits
-          {canManage ? ', edit or add permits, or export its latest data.' : ' or export its data.'}
+          New imports update the current register after review and are recorded here as activity;
+          they do not create another dated register snapshot.
         </p>
       </header>
 
@@ -88,10 +88,12 @@ export function ImportHistory({
                     )}
                     {formatDisplayDate(day.date)}
                   </span>
-                  <span className="flex flex-wrap gap-2">
-                    <Badge tone="blue">{day.total} permits</Badge>
-                    <Badge tone="green">{day.closed} closed</Badge>
-                  </span>
+                  {day.total > 0 && (
+                    <span className="flex flex-wrap gap-2">
+                      <Badge tone="blue">{day.total} permits</Badge>
+                      <Badge tone="green">{day.closed} closed</Badge>
+                    </span>
+                  )}
                 </button>
 
                 {isExpanded && (
@@ -120,9 +122,19 @@ export function ImportHistory({
                               minute: '2-digit',
                             })}
                             {!batch.available &&
+                              !batch.stats &&
                               ' · Detailed history unavailable for this older import'}
                           </span>
                         </button>
+                        {!batch.available && batch.stats && (
+                          <span className="flex flex-wrap gap-2">
+                            <Badge tone="green">{batch.stats.inserted} added</Badge>
+                            <Badge tone="purple">{batch.stats.updated} updated</Badge>
+                            <Badge tone={batch.stats.failed ? 'red' : 'slate'}>
+                              {batch.stats.failed} skipped
+                            </Badge>
+                          </span>
+                        )}
                         {batch.available && (
                           <>
                             <span className="flex gap-2">
@@ -148,20 +160,22 @@ export function ImportHistory({
                               >
                                 Export
                               </Button>
-                              {canManage && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  aria-label={`Delete import ${batch.originalName}`}
-                                  title="Delete import"
-                                  onClick={() => onDeleteBatch(batch.id, batch.originalName)}
-                                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
                             </div>
                           </>
+                        )}
+                        {canManage && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Delete import ${batch.originalName}`}
+                            title="Delete import"
+                            onClick={() =>
+                              onDeleteBatch(batch.id, batch.originalName, batch.available)
+                            }
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         )}
                       </div>
                     ))}

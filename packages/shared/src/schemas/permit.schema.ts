@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PERMIT_FIELD_LIST, type PermitFieldDef } from '../constants/permit-fields';
+import { addDaysToYmd, getTodayYmd } from '../utils/date';
 import type { PermitInput } from '../types';
 
 const emptyToUndefined = (value: unknown): unknown =>
@@ -11,6 +12,13 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/;
 
 function buildFieldSchema(field: PermitFieldDef): z.ZodTypeAny {
   let base: z.ZodTypeAny;
+
+  if (field.fixedValue !== undefined) {
+    base = z.literal(field.fixedValue, {
+      errorMap: () => ({ message: `Must be ${field.fixedValue}` }),
+    });
+    return z.preprocess((value) => emptyToUndefined(value) ?? field.fixedValue, base);
+  }
 
   switch (field.type) {
     case 'select':
@@ -28,6 +36,9 @@ function buildFieldSchema(field: PermitFieldDef): z.ZodTypeAny {
     }
     case 'date':
       base = z.string().regex(DATE_PATTERN, 'Use the format YYYY-MM-DD');
+      break;
+    case 'computed':
+      base = z.never();
       break;
     default:
       base = z
@@ -56,11 +67,41 @@ const shape = Object.fromEntries(
  */
 export const permitInputSchema = z.object(shape).superRefine((value, ctx) => {
   const { planValidStartDate: start, planValidEndDate: end } = value as PermitInput;
-  if (start && end && end < start) {
+  const today = getTodayYmd();
+  for (const field of PERMIT_FIELD_LIST) {
+    if (
+      field.type === 'date' &&
+      field.key !== 'planValidEndDate' &&
+      field.key !== 'closedDate' &&
+      typeof value[field.key as keyof typeof value] === 'string' &&
+      (value[field.key as keyof typeof value] as string) > today
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field.key],
+        message: 'Date cannot be in the future',
+      });
+    }
+  }
+  if (start && end) {
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['planValidEndDate'],
+        message: 'End date cannot be before the start date',
+      });
+    } else if (end > addDaysToYmd(start, 13)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['planValidEndDate'],
+        message: 'Permit validity cannot exceed 14 calendar days',
+      });
+    }
+  } else if (end && end > today) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['planValidEndDate'],
-      message: 'End date cannot be before the start date',
+      message: 'Date cannot be in the future',
     });
   }
 }) as unknown as z.ZodType<PermitInput, z.ZodTypeDef, unknown>;

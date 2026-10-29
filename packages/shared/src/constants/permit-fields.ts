@@ -11,7 +11,8 @@ import {
   SUB_CONTRACTORS,
 } from './options';
 
-export type FieldType = 'text' | 'textarea' | 'date' | 'select' | 'radio' | 'multiselect';
+export type FieldType =
+  'text' | 'textarea' | 'date' | 'select' | 'radio' | 'multiselect' | 'computed';
 
 export type FormSection = 'planning' | 'validity' | 'closure';
 
@@ -27,6 +28,8 @@ export interface PermitFieldDef {
   readonly required?: boolean;
   readonly options?: readonly string[];
   readonly maxLength?: number;
+  readonly defaultValue?: string;
+  readonly fixedValue?: string;
   /** Shown as a column in the register table. */
   readonly inTable?: boolean;
   /** Spans the full width of the form grid. */
@@ -44,6 +47,8 @@ export const PERMIT_FIELDS = [
     type: 'text',
     section: 'planning',
     width: 18,
+    required: true,
+    fixedValue: '1000482',
     inTable: true,
   },
   {
@@ -63,6 +68,7 @@ export const PERMIT_FIELDS = [
     width: 22,
     required: true,
     options: MAIN_CONTRACTORS,
+    defaultValue: MAIN_CONTRACTORS[0],
     inTable: true,
   },
   {
@@ -213,6 +219,7 @@ export const PERMIT_FIELDS = [
     type: 'date',
     section: 'validity',
     width: 18,
+    required: true,
     inTable: true,
   },
   {
@@ -221,15 +228,15 @@ export const PERMIT_FIELDS = [
     type: 'date',
     section: 'validity',
     width: 18,
+    required: true,
     inTable: true,
   },
   {
     key: 'ptwValidity',
     header: 'PTW Validity',
-    type: 'radio',
+    type: 'computed',
     section: 'validity',
     width: 16,
-    options: YES_NO,
     inTable: true,
   },
   {

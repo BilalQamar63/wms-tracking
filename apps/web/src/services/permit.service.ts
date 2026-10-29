@@ -1,6 +1,12 @@
 import type { FilterQuery } from 'mongoose';
 import {
+  PERMIT_FIELD_LIST,
+  toDateInputValue,
   ymdToUtcDate,
+  type ImportFieldApproval,
+  type ImportPreviewDTO,
+  type ImportPreviewFieldDTO,
+  type ImportPreviewRowDTO,
   type Paginated,
   type PermitDTO,
   type PermitFilters,
@@ -8,7 +14,7 @@ import {
   type PermitQuery,
 } from '@wms/shared';
 import { connectDb } from '@/lib/db/mongoose';
-import { conflict, notFound } from '@/lib/http/errors';
+import { badRequest, conflict, notFound } from '@/lib/http/errors';
 import { permitInputToPartialSet, permitInputToUpdate, toPermitDTO } from '@/lib/mappers';
 import { assertObjectId, escapeRegex } from '@/lib/utils/object-id';
 import { reserveSequence } from '@/models/Counter';
@@ -177,93 +183,230 @@ export async function deletePermit(id: string): Promise<void> {
   if (!result) throw notFound('Permit');
 }
 
-export interface UpsertResult {
-  inserted: number;
-  updated: number;
+function comparableValue(
+  value: unknown,
+  field: (typeof PERMIT_FIELD_LIST)[number],
+): string | string[] | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (field.type === 'date') return toDateInputValue(value as string | Date) || null;
+  if (field.type === 'multiselect' && Array.isArray(value)) {
+    return value.map(String).sort((a, b) => a.localeCompare(b));
+  }
+  if (field.key === 'status' && value === 'Not Start Yet') return 'Not Closed';
+  return String(value).trim();
 }
 
-/**
- * Bulk import. A row whose "New PTW Number" matches an existing permit updates that permit
- * (only the cells that contain a value); every other row is inserted with a new Sr No.
- * If the same PTW number appears twice in the file, the last occurrence wins.
- */
-export async function upsertPermits(
-  rows: ParsedPermitRow[],
-  userId: string,
-): Promise<UpsertResult> {
-  if (rows.length === 0) return { inserted: 0, updated: 0 };
-  await connectDb();
+function sameValue(left: string | string[] | null, right: string | string[] | null): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
-  // De-duplicate by PTW number inside the file (last one wins).
-  const byNumber = new Map<string, ParsedPermitRow>();
-  const unnumbered: ParsedPermitRow[] = [];
-  for (const row of rows) {
-    const key = row.data.newPtwNumber?.toLowerCase();
-    if (key) byNumber.set(key, row);
-    else unnumbered.push(row);
+async function findCurrentPermitsForRows(rows: ParsedPermitRow[]): Promise<PermitDoc[]> {
+  const numbers = [
+    ...new Set(rows.map((row) => row.data.newPtwNumber?.trim()).filter(Boolean) as string[]),
+  ];
+  if (numbers.length === 0) return [];
+
+  const docs = await PermitModel.find({
+    importBatchId: { $exists: false },
+    $or: numbers.map((number) => ({
+      newPtwNumber: new RegExp(`^${escapeRegex(number)}$`, 'i'),
+    })),
+  }).lean<PermitDoc[]>();
+  const matchedByNumber = new Map<string, number>();
+  for (const doc of docs) {
+    const key = doc.newPtwNumber?.trim().toLowerCase();
+    if (key) matchedByNumber.set(key, (matchedByNumber.get(key) ?? 0) + 1);
+  }
+  const duplicate = [...matchedByNumber.entries()].find(([, count]) => count > 1);
+  if (duplicate) {
+    throw conflict(`New PTW Number "${duplicate[0]}" matches multiple current permits`);
+  }
+  return docs;
+}
+
+function makeImportPreviewRows(
+  rows: ParsedPermitRow[],
+  existingPermits: PermitDoc[],
+): ImportPreviewRowDTO[] {
+  const existingByNumber = new Map<string, PermitDoc>();
+  for (const permit of existingPermits) {
+    const key = permit.newPtwNumber?.trim().toLowerCase();
+    if (key) existingByNumber.set(key, permit);
   }
 
-  const unique = [...byNumber.values(), ...unnumbered];
+  return rows.map(({ rowNumber, data }) => {
+    const number = data.newPtwNumber?.trim();
+    const existing = number ? existingByNumber.get(number.toLowerCase()) : undefined;
+    const dto = existing ? toPermitDTO(existing) : undefined;
+    const fields: ImportPreviewFieldDTO[] = [];
 
-  const numbers = [...byNumber.keys()];
-  const existing = numbers.length
-    ? await PermitModel.find({
-        importBatchId: { $exists: false },
-        newPtwNumber: { $in: [...byNumber.values()].map((r) => r.data.newPtwNumber as string) },
-      })
-        .select('_id newPtwNumber')
-        .lean()
-    : [];
-  const existingByNumber = new Map(
-    existing.map((doc) => [doc.newPtwNumber?.toLowerCase(), doc._id]),
-  );
+    for (const field of PERMIT_FIELD_LIST) {
+      if (field.type === 'computed') continue;
+      const newRaw = data[field.key as keyof PermitInput];
+      if (newRaw === undefined || newRaw === '') continue;
+      const newValue = comparableValue(newRaw, field);
+      const oldValue = dto ? comparableValue(dto[field.key as keyof PermitDTO], field) : null;
+      if (existing && sameValue(oldValue, newValue)) continue;
+      fields.push({
+        key: field.key,
+        header: field.header,
+        type: field.type,
+        oldValue,
+        newValue,
+      });
+    }
 
-  const toInsert = unique.filter((r) => !existingByNumber.has(r.data.newPtwNumber?.toLowerCase()));
-  const toUpdate = unique.filter((r) => existingByNumber.has(r.data.newPtwNumber?.toLowerCase()));
-
-  const firstSr = toInsert.length ? await reserveSequence('permit', toInsert.length) : 0;
-
-  const operations = [
-    ...toInsert.map((row, index) => ({
-      insertOne: {
-        document: {
-          ...permitInputToPartialSet(row.data),
-          srNo: firstSr + index,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-      },
-    })),
-    ...toUpdate.map((row) => ({
-      updateOne: {
-        filter: { _id: existingByNumber.get(row.data.newPtwNumber?.toLowerCase()) },
-        update: { $set: { ...permitInputToPartialSet(row.data), updatedBy: userId } },
-      },
-    })),
-  ];
-
-  // Cast: Mongoose's bulkWrite generics don't model the dynamic field set.
-  await PermitModel.bulkWrite(operations as never, { ordered: false });
-  return { inserted: toInsert.length, updated: toUpdate.length };
+    return {
+      rowNumber,
+      action: existing ? 'update' : 'add',
+      newPtwNumber: number,
+      existingSrNo: existing?.srNo,
+      fields,
+    };
+  });
 }
 
-/** Saves the exact successfully parsed rows as an independently selectable import batch. */
-export async function createPermitSnapshot(
+/** Compares a parsed workbook with permits in the current register without changing data. */
+export async function previewCurrentRegisterImport(
   rows: ParsedPermitRow[],
-  batchId: string,
-  userId: string,
-): Promise<number> {
-  if (rows.length === 0) return 0;
+  fileName: string,
+  totalRows: number,
+  errors: ImportPreviewDTO['errors'],
+): Promise<ImportPreviewDTO> {
   await connectDb();
+  const existing = await findCurrentPermitsForRows(rows);
+  return {
+    fileName,
+    totalRows,
+    rows: makeImportPreviewRows(rows, existing),
+    errors,
+  };
+}
 
-  const firstSr = await reserveSequence('permit', rows.length);
-  const documents = rows.map((row, index) => ({
-    ...permitInputToPartialSet(row.data),
-    srNo: firstSr + index,
-    importBatchId: batchId,
-    createdBy: userId,
-    updatedBy: userId,
-  }));
-  await PermitModel.insertMany(documents, { ordered: true });
-  return documents.length;
+/** Applies only reviewed changes and selected new rows to the current register. */
+export async function applyReviewedImport(
+  rows: ParsedPermitRow[],
+  approvals: ImportFieldApproval[],
+  addRowNumbers: number[],
+  userId: string,
+): Promise<{ inserted: number; updated: number }> {
+  await connectDb();
+  const existing = await findCurrentPermitsForRows(rows);
+  const previewRows = makeImportPreviewRows(rows, existing);
+  const previewByNumber = new Map(previewRows.map((row) => [row.rowNumber, row]));
+  const parsedByNumber = new Map(rows.map((row) => [row.rowNumber, row]));
+  const selectedAdds = new Set(addRowNumbers);
+  const selectedApprovals = new Map(approvals.map((approval) => [approval.rowNumber, approval]));
+
+  if (selectedAdds.size !== addRowNumbers.length) {
+    throw badRequest('A new permit row was selected more than once');
+  }
+  if (selectedApprovals.size !== approvals.length) {
+    throw badRequest('An import row was reviewed more than once');
+  }
+  for (const rowNumber of selectedAdds) {
+    if (!previewByNumber.has(rowNumber) || previewByNumber.get(rowNumber)?.action !== 'add') {
+      throw conflict(`Excel row ${rowNumber} no longer matches the import preview`);
+    }
+  }
+  for (const approval of approvals) {
+    if (previewByNumber.get(approval.rowNumber)?.action !== 'update') {
+      throw badRequest(`Excel row ${approval.rowNumber} is not valid for this import`);
+    }
+  }
+
+  if ([...selectedAdds].some((rowNumber) => selectedApprovals.has(rowNumber))) {
+    throw badRequest('A permit row cannot be selected as both an update and a new permit');
+  }
+
+  const operations: Record<string, unknown>[] = [];
+  for (const preview of previewRows) {
+    const parsedRow = parsedByNumber.get(preview.rowNumber);
+    if (!parsedRow) continue;
+
+    if (preview.action === 'add') {
+      if (!selectedAdds.has(preview.rowNumber)) continue;
+      operations.push({
+        insertOne: {
+          document: {
+            ...permitInputToPartialSet(parsedRow.data),
+            srNo: 0,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        },
+      });
+      continue;
+    }
+
+    const approval = selectedApprovals.get(preview.rowNumber);
+    if (!approval?.fields.length) continue;
+    const existingPermit = existing.find(
+      (permit) =>
+        permit.newPtwNumber?.trim().toLowerCase() === preview.newPtwNumber?.trim().toLowerCase(),
+    );
+    if (!existingPermit) {
+      throw conflict(`The current permit for Excel row ${preview.rowNumber} no longer exists`);
+    }
+
+    const approvedKeys = new Set<string>();
+    const set: Record<string, unknown> = {};
+    const expectedCurrentValues: Record<string, unknown> = {};
+    for (const fieldApproval of approval.fields) {
+      if (approvedKeys.has(fieldApproval.key)) {
+        throw badRequest(`Duplicate field approval for Excel row ${preview.rowNumber}`);
+      }
+      approvedKeys.add(fieldApproval.key);
+      const changedField = preview.fields.find((field) => field.key === fieldApproval.key);
+      if (!changedField || !sameValue(changedField.oldValue, fieldApproval.expectedOldValue)) {
+        throw conflict(
+          `The current permit for Excel row ${preview.rowNumber} changed after the review was opened`,
+        );
+      }
+      const field = PERMIT_FIELD_LIST.find((item) => item.key === fieldApproval.key);
+      if (!field || field.fixedValue !== undefined || field.type === 'computed') {
+        throw badRequest(`Field "${fieldApproval.key}" cannot be updated from an import`);
+      }
+      const value = parsedRow.data[field.key as keyof PermitInput];
+      if (value === undefined || value === '') {
+        throw badRequest(`Field "${field.header}" has no incoming value`);
+      }
+      set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;
+      expectedCurrentValues[field.key] = existingPermit[field.key as keyof PermitDoc] ?? null;
+    }
+
+    if (Object.keys(set).length === 0) continue;
+    operations.push({
+      updateOne: {
+        filter: { _id: existingPermit._id, ...expectedCurrentValues },
+        update: {
+          $set: { ...set, updatedBy: userId },
+          $unset: { ptwValidity: 1 },
+        },
+      },
+    });
+  }
+
+  const insertOperations = operations.filter((operation) => 'insertOne' in operation);
+  if (insertOperations.length > 0) {
+    const firstSr = await reserveSequence('permit', insertOperations.length);
+    insertOperations.forEach((operation, index) => {
+      const insert = operation.insertOne as { document: Record<string, unknown> };
+      insert.document.srNo = firstSr + index;
+    });
+  }
+
+  if (operations.length > 0) {
+    const result = await PermitModel.bulkWrite(operations as never, { ordered: true });
+    const updateCount = operations.length - insertOperations.length;
+    if (result.matchedCount !== updateCount || result.insertedCount !== insertOperations.length) {
+      throw conflict(
+        'A permit changed while the import was being applied; review the workbook again',
+      );
+    }
+  }
+  return {
+    inserted: insertOperations.length,
+    updated: operations.length - insertOperations.length,
+  };
 }

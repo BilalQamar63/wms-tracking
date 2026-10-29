@@ -4,6 +4,7 @@ import {
   FORM_SECTIONS,
   REGISTER_TITLE,
   SR_NO_HEADER,
+  formatPlanValidity,
   ymdToUtcDate,
   type PermitDTO,
 } from '@wms/shared';
@@ -117,7 +118,11 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
     const row = sheet.getRow(FIRST_DATA_ROW + rowIndex);
     row.getCell(1).value = permit.srNo;
     PERMIT_FIELD_LIST.forEach((field, index) => {
-      const raw = permit[field.key as keyof PermitDTO] as string | string[] | undefined;
+      const raw =
+        field.fixedValue ??
+        (field.type === 'computed'
+          ? formatPlanValidity(permit.planValidEndDate)
+          : (permit[field.key as keyof PermitDTO] as string | string[] | undefined));
       if (!raw) return;
       const cell = row.getCell(index + 2);
       if (field.type === 'date') {

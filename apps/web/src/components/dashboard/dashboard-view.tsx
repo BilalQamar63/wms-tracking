@@ -102,9 +102,9 @@ export function DashboardView() {
               <div>
                 <h2 className="text-base font-semibold text-slate-900">Permits by company</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Select a status card to filter companies. Active includes Not Closed and Not Start
-                  Yet permits. Each PTW number is counted once using its most recently updated
-                  record across imports and the current register.
+                  Select a status card to filter companies. Active permits are Not Closed. Each PTW
+                  number is counted once using its most recently updated record across imports and
+                  the current register.
                 </p>
               </div>
               <label className="relative block w-full sm:max-w-xs">
