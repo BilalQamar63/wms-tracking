@@ -60,8 +60,7 @@ export const PLANT_DIVISIONS = [
   'Habshan 5 Green Field Plus',
   'Habshan Complex Green Field Plus',
   'Habshan 5 Brown Field',
-  'Ruwais NGL',
-  'Green Field Plus',
+  'Ruwais NGL Green Field Plus',
 ] as const;
 
 export const YES_NO = ['Yes', 'No'] as const;
