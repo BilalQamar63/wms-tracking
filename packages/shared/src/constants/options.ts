@@ -2,7 +2,7 @@
  * Dropdown option lists taken from the "Master PTW Tracking Register" Excel template.
  * Every list is the single source of truth for the UI, API validation and Excel export.
  */
-export const DEPARTMENTS = ['Construction', 'Commissioning', 'Maintenance', 'Operations'] as const;
+export const DEPARTMENTS = ['Construction', 'Commissioning'] as const;
 
 export const DISCIPLINES = [
   'Electrical',
@@ -38,7 +38,9 @@ export const PLANT_DIVISIONS = ['Habshan 5 Green Field', 'Habshan 5 Brown Field'
 
 export const YES_NO = ['Yes', 'No'] as const;
 
-export const PTW_STATUSES = ['Closed', 'Not Closed'] as const;
+export const PTW_STATUSES = ['Not Start Yet', 'Not Closed', 'Closed'] as const;
+
+export const DEFAULT_PTWC_APPROVER = 'Muhammad Sajid';
 
 export const USER_ROLES = ['admin', 'user'] as const;
 export type Role = (typeof USER_ROLES)[number];

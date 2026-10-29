@@ -25,6 +25,7 @@ export function PermitsView() {
   const toast = useToast();
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [page, setPage] = useState(1);
+  const [viewMode, setViewMode] = useState<'current' | 'snapshot' | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const debouncedSearch = useDebounce(filters.search);
   const effectiveFilters = { ...filters, search: debouncedSearch };
@@ -39,9 +40,11 @@ export function PermitsView() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PermitDTO | null>(null);
   const [deleting, setDeleting] = useState<PermitDTO | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState<{ id: string; name: string } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingBatchId, setExportingBatchId] = useState<string | null>(null);
 
   // Any filter change goes back to page 1.
   useEffect(
@@ -83,6 +86,22 @@ export function PermitsView() {
     }
   }
 
+  async function exportBatch(batchId: string) {
+    setExportingBatchId(batchId);
+    try {
+      const name = await downloadFromApi(
+        `/api/permits/export${toQueryString({ batchId })}`,
+        'PTW-Register.xlsx',
+      );
+      toast.success(`Exported ${name}`);
+      refreshFileHistory();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setExportingBatchId(null);
+    }
+  }
+
   async function confirmDelete() {
     if (!deleting) return;
     setDeleteBusy(true);
@@ -98,6 +117,25 @@ export function PermitsView() {
     }
   }
 
+  async function confirmDeleteBatch() {
+    if (!deletingBatch) return;
+    setDeleteBusy(true);
+    try {
+      await apiFetch(`/api/files/${deletingBatch.id}`, { method: 'DELETE' });
+      toast.success(`Deleted import ${deletingBatch.name}`);
+      if (selectedBatchId === deletingBatch.id) {
+        setSelectedBatchId(null);
+        setViewMode(null);
+      }
+      setDeletingBatch(null);
+      refreshFileHistory();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete the import');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -108,17 +146,19 @@ export function PermitsView() {
             <Button variant="secondary" onClick={() => setImportOpen(true)}>
               <Upload className="h-4 w-4" /> Import
             </Button>
-            <Button variant="secondary" onClick={exportExcel} loading={exporting}>
-              <Download className="h-4 w-4" /> {selectedBatchId ? 'Export snapshot' : 'Export'}
-            </Button>
-            {!selectedBatchId && (
+            {viewMode && (
+              <Button variant="secondary" onClick={exportExcel} loading={exporting}>
+                <Download className="h-4 w-4" /> {selectedBatchId ? 'Export snapshot' : 'Export'}
+              </Button>
+            )}
+            {viewMode === 'current' && (
               <Button
                 onClick={() => {
                   setEditing(null);
                   setFormOpen(true);
                 }}
               >
-                <Plus className="h-4 w-4" /> Add permit
+                <Plus className="h-4 w-4" /> Add to current register
               </Button>
             )}
           </>
@@ -127,54 +167,85 @@ export function PermitsView() {
 
       <ImportHistory
         selectedBatchId={selectedBatchId}
+        currentSelected={viewMode === 'current'}
+        onAddPermit={(batchId) => {
+          setViewMode('snapshot');
+          setSelectedBatchId(batchId);
+          setFilters(EMPTY_PERMIT_FILTERS);
+          setPage(1);
+          setEditing(null);
+          setFormOpen(true);
+        }}
+        onExportBatch={exportBatch}
+        onDeleteBatch={(id, name) => setDeletingBatch({ id, name })}
+        exportingBatchId={exportingBatchId}
         onSelect={(id) => {
+          setViewMode('snapshot');
           setSelectedBatchId(id);
+          setFilters(EMPTY_PERMIT_FILTERS);
+          setPage(1);
+        }}
+        onSelectCurrent={() => {
+          setViewMode('current');
+          setSelectedBatchId(null);
           setFilters(EMPTY_PERMIT_FILTERS);
           setPage(1);
         }}
       />
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        {selectedBatchId && (
-          <div className="border-b border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-900">
-            Editing this imported snapshot only. Changes will not alter the current register or
-            another upload. Use <b>Export snapshot</b> to download the updated Excel file.
-          </div>
-        )}
-        <PermitFilters value={filters} onChange={setFilters} />
+      {viewMode ? (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          {selectedBatchId ? (
+            <div className="border-b border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-900">
+              Viewing this imported workbook only. Changes and new permits stay in this snapshot.
+              Use its <b>Export</b> action above to download the updated Excel file.
+            </div>
+          ) : (
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Current register — separate from the dated imported workbooks above.
+            </div>
+          )}
+          <PermitFilters value={filters} onChange={setFilters} />
 
-        {error ? (
-          <EmptyState title="Could not load permits">{error.message}</EmptyState>
-        ) : isLoading && !data ? (
-          <EmptyState title="Loading…" />
-        ) : data && data.items.length > 0 ? (
-          <>
-            <PermitTable
-              permits={data.items}
-              onEdit={(permit) => {
-                setEditing(permit);
-                setFormOpen(true);
-              }}
-              onDelete={setDeleting}
-            />
-            <Pagination
-              page={data.page}
-              totalPages={data.totalPages}
-              total={data.total}
-              limit={data.limit}
-              onChange={setPage}
-            />
-          </>
-        ) : (
-          <EmptyState title="No permits found">
-            Add a permit or import an Excel file to get started.
-          </EmptyState>
-        )}
-      </section>
+          {error ? (
+            <EmptyState title="Could not load permits">{error.message}</EmptyState>
+          ) : isLoading && !data ? (
+            <EmptyState title="Loading…" />
+          ) : data && data.items.length > 0 ? (
+            <>
+              <PermitTable
+                permits={data.items}
+                onEdit={(permit) => {
+                  setEditing(permit);
+                  setFormOpen(true);
+                }}
+                onDelete={setDeleting}
+              />
+              <Pagination
+                page={data.page}
+                totalPages={data.totalPages}
+                total={data.total}
+                limit={data.limit}
+                onChange={setPage}
+              />
+            </>
+          ) : (
+            <EmptyState title="No permits found">
+              Add a permit or import an Excel file to get started.
+            </EmptyState>
+          )}
+        </section>
+      ) : (
+        <EmptyState title="Choose a register">
+          Select an imported workbook above to view its dated permits, or choose the current
+          register. New permits can be added directly to the selected workbook.
+        </EmptyState>
+      )}
 
       <PermitFormDialog
         open={formOpen}
         permit={editing}
+        importBatchId={selectedBatchId}
         onClose={() => setFormOpen(false)}
         onSaved={async () => {
           await refreshRegister();
@@ -184,6 +255,7 @@ export function PermitsView() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImported={() => {
+          setViewMode(null);
           setSelectedBatchId(null);
           refresh();
           refreshFileHistory();
@@ -201,6 +273,17 @@ export function PermitsView() {
         {selectedBatchId
           ? ' This removes it only from this imported snapshot.'
           : ' This cannot be undone.'}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={!!deletingBatch}
+        title="Delete imported workbook"
+        confirmLabel="Delete import"
+        loading={deleteBusy}
+        onConfirm={confirmDeleteBatch}
+        onClose={() => setDeletingBatch(null)}
+      >
+        Delete <b>{deletingBatch?.name}</b> and all permits saved in this imported snapshot? This
+        cannot be undone.
       </ConfirmDialog>
     </>
   );

@@ -32,6 +32,12 @@ const HEADER_LOOKUP = new Map<string, (typeof PERMIT_FIELD_LIST)[number]>(
 );
 const WORK_ACTIVITY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'workActivity');
 if (WORK_ACTIVITY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Work Activity'), WORK_ACTIVITY_FIELD);
+const HARD_COPY_FIELD = PERMIT_FIELD_LIST.find(
+  (field) => field.key === 'receivedOriginalClosedPtw',
+);
+if (HARD_COPY_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Received Original Closed PTW'), HARD_COPY_FIELD);
+}
 const SR_NO_KEY = normalizeHeader(SR_NO_HEADER);
 
 /** Reduces any ExcelJS cell value (rich text, formula, hyperlink…) to a primitive. */
@@ -133,7 +139,7 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
           .split(/[;|,\r\n]+/)
           .map((option) => canonicalOption(option.trim(), field.options ?? []))
           .filter(Boolean);
-      } else if (field.type === 'select' && field.options) {
+      } else if ((field.type === 'select' || field.type === 'radio') && field.options) {
         candidate[field.key] = canonicalOption(text, field.options);
       } else {
         candidate[field.key] = text;

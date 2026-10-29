@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  DEFAULT_PTWC_APPROVER,
   PERMIT_FIELD_LIST,
   permitInputSchema,
   toDateInputValue,
@@ -19,6 +20,7 @@ import { PermitFormFields } from './permit-form-fields';
 interface Props {
   open: boolean;
   permit: PermitDTO | null;
+  importBatchId?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -44,11 +46,14 @@ function toFormValues(permit: PermitDTO | null): PermitInput {
             ? raw
             : '';
   }
-  if (!permit) values.status = 'Not Closed';
+  if (!permit) {
+    values.status = 'Not Start Yet';
+    values.approvedByPtwc = DEFAULT_PTWC_APPROVER;
+  }
   return values as PermitInput;
 }
 
-export function PermitFormDialog({ open, permit, onClose, onSaved }: Props) {
+export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved }: Props) {
   const toast = useToast();
   const isEdit = !!permit;
 
@@ -71,7 +76,10 @@ export function PermitFormDialog({ open, permit, onClose, onSaved }: Props) {
     try {
       await apiFetch(isEdit ? `/api/permits/${permit.id}` : '/api/permits', {
         method: isEdit ? 'PUT' : 'POST',
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          ...values,
+          ...(!isEdit && importBatchId ? { importBatchId } : {}),
+        }),
       });
       toast.success(isEdit ? 'Permit updated' : 'Permit added');
       onSaved();

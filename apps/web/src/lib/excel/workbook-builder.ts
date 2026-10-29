@@ -27,7 +27,7 @@ function addListsSheet(workbook: ExcelJS.Workbook): Map<string, string> {
   let column = 1;
 
   for (const field of PERMIT_FIELD_LIST) {
-    if (!['select', 'multiselect'].includes(field.type) || !field.options) continue;
+    if (!['select', 'radio', 'multiselect'].includes(field.type) || !field.options) continue;
     const letter = sheet.getColumn(column).letter;
     sheet.getCell(1, column).value = field.header;
     field.options.forEach((option, index) => {
@@ -115,7 +115,7 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
       const field = c > 1 ? PERMIT_FIELD_LIST[c - 2] : undefined;
       if (!field) continue;
       if (field.type === 'date') cell.numFmt = DATE_FORMAT;
-      if (field.type === 'select' && lists.has(field.key)) {
+      if ((field.type === 'select' || field.type === 'radio') && lists.has(field.key)) {
         cell.dataValidation = {
           type: 'list',
           allowBlank: true,

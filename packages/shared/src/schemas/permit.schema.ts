@@ -13,7 +13,8 @@ function buildFieldSchema(field: PermitFieldDef): z.ZodTypeAny {
   let base: z.ZodTypeAny;
 
   switch (field.type) {
-    case 'select': {
+    case 'select':
+    case 'radio': {
       const options = field.options as [string, ...string[]];
       base = z.enum(options, {
         errorMap: () => ({ message: `Must be one of: ${options.join(', ')}` }),

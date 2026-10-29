@@ -13,6 +13,7 @@ import { permitInputToPartialSet, permitInputToUpdate, toPermitDTO } from '@/lib
 import { assertObjectId, escapeRegex } from '@/lib/utils/object-id';
 import { reserveSequence } from '@/models/Counter';
 import { PermitModel, type PermitDoc } from '@/models/Permit';
+import { FileRecordModel } from '@/models/FileRecord';
 import type { ParsedPermitRow } from '@/lib/excel/workbook-parser';
 
 const POPULATE = [
@@ -111,13 +112,34 @@ export async function getPermit(id: string): Promise<PermitDTO> {
   return toPermitDTO(doc);
 }
 
-export async function createPermit(input: PermitInput, userId: string): Promise<PermitDTO> {
+export async function createPermit(
+  input: PermitInput,
+  userId: string,
+  batchId?: string,
+): Promise<PermitDTO> {
   await connectDb();
-  await assertUniquePtwNumber(input.newPtwNumber);
+  if (batchId) {
+    assertObjectId(batchId, 'Import');
+    const batch = await FileRecordModel.findOne({
+      _id: batchId,
+      kind: 'import',
+      snapshotAvailable: true,
+    })
+      .select('_id')
+      .lean();
+    if (!batch) throw notFound('Imported snapshot');
+  }
+  await assertUniquePtwNumber(input.newPtwNumber, undefined, batchId);
 
   const srNo = await reserveSequence('permit');
   const { set } = permitInputToUpdate(input);
-  const doc = await PermitModel.create({ ...set, srNo, createdBy: userId, updatedBy: userId });
+  const doc = await PermitModel.create({
+    ...set,
+    srNo,
+    ...(batchId ? { importBatchId: batchId } : {}),
+    createdBy: userId,
+    updatedBy: userId,
+  });
   return getPermit(String(doc._id));
 }
 

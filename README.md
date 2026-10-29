@@ -88,10 +88,10 @@ The deleted user's email can be re-used.
 - If an Atlas `mongodb+srv://` DNS lookup fails, the app and admin seeder retry once using Google and Cloudflare DNS. If your network blocks those resolvers, use a network that permits DNS lookups or the standard (non-SRV) connection string from Atlas.
 - Plans last 14 calendar days: the end date is calculated as 13 days after the start date during Excel import or when selecting a start date in the form. The countdown shows when a future plan starts, then counts remaining days inclusively (for example, **1 day left** on the end date) and labels expired plans without changing their Status.
 - Dates in the register, import history, and exported workbooks use `DD-MM-YYYY`. Imported snapshots can be edited independently and exported without changing the current register.
-- The form and Excel register use **Work Description**; imports still accept the legacy **Work Activity** header. Multiple certificate types can be selected in the form or entered in Excel separated by semicolons. Remarks are no longer part of the register.
+- The form and Excel register use **Work Description**; imports still accept the legacy **Work Activity** header. Multiple certificate types can be selected in the form or entered in Excel separated by semicolons. Remarks are included in the register.
 - Imported snapshots created before snapshot history was introduced cannot be opened; the original workbook remains available in file history.
 - `Commisioing` (typo in the original sheet) is stored as **Commissioning**; the importer accepts the old spelling.
-- Certificate Types support multiple selections in the form and semicolon-separated values in Excel.
+- Certificate Types support multiple selections in the form and semicolon-separated values in Excel. Yes/No fields and Status use radio controls in the form; Status values are **Not Start Yet**, **Not Closed**, and **Closed**.
 - User reassignment runs as idempotent updates (no multi-document transaction) so it works on a standalone
   MongoDB; if interrupted, simply repeat the delete.
 - Set `APP_TIMEZONE` (e.g. `Asia/Dubai`) so exported file names carry local time.

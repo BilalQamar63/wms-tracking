@@ -8,9 +8,10 @@ import {
   YES_NO,
 } from './options';
 
-export type FieldType = 'text' | 'textarea' | 'date' | 'select' | 'multiselect';
+export type FieldType = 'text' | 'textarea' | 'date' | 'select' | 'radio' | 'multiselect';
 
-export type FormSection = 'registration' | 'permit' | 'location' | 'validity' | 'approval';
+export type FormSection =
+  'registration' | 'permit' | 'location' | 'validity' | 'approval' | 'notes';
 
 export interface PermitFieldDef {
   /** Property name used in the API, database and forms. */
@@ -156,7 +157,7 @@ export const PERMIT_FIELDS = [
   {
     key: 'receivedDraft',
     header: 'Received Draft',
-    type: 'select',
+    type: 'radio',
     section: 'approval',
     width: 14,
     options: YES_NO,
@@ -164,7 +165,7 @@ export const PERMIT_FIELDS = [
   {
     key: 'receivedApproved',
     header: 'Received Approved',
-    type: 'select',
+    type: 'radio',
     section: 'approval',
     width: 16,
     options: YES_NO,
@@ -179,7 +180,7 @@ export const PERMIT_FIELDS = [
   {
     key: 'closedByJvPtwCoordinator',
     header: 'Closed By JV PTW Coordinator',
-    type: 'select',
+    type: 'radio',
     section: 'approval',
     width: 22,
     options: YES_NO,
@@ -187,7 +188,7 @@ export const PERMIT_FIELDS = [
   {
     key: 'status',
     header: 'Status',
-    type: 'select',
+    type: 'radio',
     section: 'approval',
     width: 14,
     options: PTW_STATUSES,
@@ -195,8 +196,16 @@ export const PERMIT_FIELDS = [
   },
   {
     key: 'receivedOriginalClosedPtw',
-    header: 'Received Original Closed PTW',
-    type: 'select',
+    header: 'Received Original Closed PTW (Hard Copy)',
+    type: 'radio',
+    section: 'approval',
+    width: 22,
+    options: YES_NO,
+  },
+  {
+    key: 'receivedOriginalClosedPtwSoftCopy',
+    header: 'Received Original Closed PTW (Soft Copy)',
+    type: 'radio',
     section: 'approval',
     width: 22,
     options: YES_NO,
@@ -207,6 +216,15 @@ export const PERMIT_FIELDS = [
     type: 'text',
     section: 'approval',
     width: 26,
+  },
+  {
+    key: 'remarks',
+    header: 'Remarks',
+    type: 'textarea',
+    section: 'notes',
+    width: 34,
+    maxLength: 1000,
+    fullWidth: true,
   },
 ] as const satisfies readonly PermitFieldDef[];
 
@@ -221,6 +239,7 @@ export const FORM_SECTIONS: ReadonlyArray<{ id: FormSection; title: string }> = 
   { id: 'location', title: 'Plant & Location' },
   { id: 'validity', title: 'Plan Validity' },
   { id: 'approval', title: 'Approval & Closure' },
+  { id: 'notes', title: 'Remarks' },
 ];
 
 export const REGISTER_TITLE = 'MASTER PTW TRACKING REGISTER - ONLINE';

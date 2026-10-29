@@ -1,21 +1,37 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Clock3 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock3, Trash2 } from 'lucide-react';
 import useSWR from 'swr';
 import type { PermitImportDayDTO } from '@wms/shared';
 import { formatDisplayDate } from '@wms/shared';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { swrFetcher } from '@/lib/api-client';
 import { cn } from '@/lib/utils/cn';
 
 interface Props {
   selectedBatchId: string | null;
-  onSelect: (batchId: string | null) => void;
+  currentSelected: boolean;
+  onSelect: (batchId: string) => void;
+  onSelectCurrent: () => void;
+  onAddPermit: (batchId: string) => void;
+  onExportBatch: (batchId: string) => void;
+  onDeleteBatch: (batchId: string, fileName: string) => void;
+  exportingBatchId: string | null;
 }
 
-export function ImportHistory({ selectedBatchId, onSelect }: Props) {
+export function ImportHistory({
+  selectedBatchId,
+  currentSelected,
+  onSelect,
+  onSelectCurrent,
+  onAddPermit,
+  onExportBatch,
+  onDeleteBatch,
+  exportingBatchId,
+}: Props) {
   const {
     data: days,
     error,
@@ -31,8 +47,8 @@ export function ImportHistory({ selectedBatchId, onSelect }: Props) {
           Imported register history
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Select an import date and upload to edit its saved data, then export the updated register.
-          Closed counts reflect rows whose Status is set to Closed in those uploads.
+          Each uploaded workbook is separate. Select it to view or edit its permits, add permits
+          directly to that upload, or export that upload’s latest data.
         </p>
       </header>
 
@@ -79,20 +95,20 @@ export function ImportHistory({ selectedBatchId, onSelect }: Props) {
                 {isExpanded && (
                   <div className="divide-y divide-slate-100">
                     {day.batches.map((batch) => (
-                      <button
+                      <div
                         key={batch.id}
-                        type="button"
-                        disabled={!batch.available}
-                        onClick={() => onSelect(batch.id)}
                         className={cn(
-                          'flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left transition',
-                          selectedBatchId === batch.id
-                            ? 'bg-brand-50 ring-1 ring-inset ring-brand-200'
-                            : 'hover:bg-slate-50',
-                          !batch.available && 'cursor-not-allowed opacity-60',
+                          'flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition',
+                          selectedBatchId === batch.id ? 'bg-brand-50' : 'hover:bg-slate-50',
+                          !batch.available && 'opacity-60',
                         )}
                       >
-                        <span className="min-w-0">
+                        <button
+                          type="button"
+                          disabled={!batch.available}
+                          onClick={() => onSelect(batch.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <span className="block truncate text-sm font-medium text-slate-800">
                             {batch.originalName}
                           </span>
@@ -104,14 +120,44 @@ export function ImportHistory({ selectedBatchId, onSelect }: Props) {
                             {!batch.available &&
                               ' · Detailed history unavailable for this older import'}
                           </span>
-                        </span>
+                        </button>
                         {batch.available && (
-                          <span className="flex gap-2">
-                            <Badge tone="blue">{batch.total} permits</Badge>
-                            <Badge tone="green">{batch.closed} closed</Badge>
-                          </span>
+                          <>
+                            <span className="flex gap-2">
+                              <Badge tone="blue">{batch.total} permits</Badge>
+                              <Badge tone="green">{batch.closed} closed</Badge>
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => onAddPermit(batch.id)}
+                              >
+                                Add permit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                loading={exportingBatchId === batch.id}
+                                disabled={exportingBatchId !== null}
+                                onClick={() => onExportBatch(batch.id)}
+                              >
+                                Export
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-label={`Delete import ${batch.originalName}`}
+                                title="Delete import"
+                                onClick={() => onDeleteBatch(batch.id, batch.originalName)}
+                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </>
                         )}
-                      </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -121,17 +167,19 @@ export function ImportHistory({ selectedBatchId, onSelect }: Props) {
         )}
       </div>
 
-      {selectedBatchId && (
-        <div className="border-t border-slate-100 px-4 py-3 text-right">
-          <button
-            type="button"
-            onClick={() => onSelect(null)}
-            className="text-xs font-medium text-brand-700 hover:text-brand-900"
-          >
-            Return to current register
-          </button>
-        </div>
-      )}
+      <div className="border-t border-slate-100 px-4 py-3 text-right">
+        <button
+          type="button"
+          onClick={onSelectCurrent}
+          aria-pressed={currentSelected}
+          className={cn(
+            'text-xs font-medium hover:text-brand-900',
+            currentSelected ? 'text-brand-900' : 'text-brand-700',
+          )}
+        >
+          {currentSelected ? 'Viewing current register' : 'Open current register'}
+        </button>
+      </div>
     </section>
   );
 }

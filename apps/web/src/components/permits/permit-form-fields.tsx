@@ -55,6 +55,23 @@ function FieldControl({
       );
     case 'select':
       return <Select id={id} options={field.options ?? []} invalid={invalid} {...register(name)} />;
+    case 'radio':
+      return (
+        <div className="flex flex-wrap gap-x-5 gap-y-2" role="radiogroup" aria-label={field.header}>
+          {(field.options ?? []).map((option, index) => (
+            <label key={option} className="inline-flex items-center gap-2 text-sm text-slate-700">
+              <input
+                id={index === 0 ? id : `${id}-${index}`}
+                type="radio"
+                value={option}
+                className="h-4 w-4 border-slate-300 text-brand-700 focus:ring-brand-500"
+                {...register(name)}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
+      );
     case 'date': {
       const registration = register(name);
       return (

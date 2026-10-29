@@ -1,7 +1,17 @@
+import { z } from 'zod';
 import { permitInputSchema, permitQuerySchema } from '@wms/shared';
 import { requireUser } from '@/lib/auth/session';
 import { created, ok, route, searchParamsToObject } from '@/lib/http/response';
 import { createPermit, listPermits } from '@/services/permit.service';
+
+const createPermitRequestSchema = z
+  .object({
+    importBatchId: z
+      .string()
+      .regex(/^[a-f\d]{24}$/i)
+      .optional(),
+  })
+  .passthrough();
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +24,7 @@ export const GET = route(async (req) => {
 
 export const POST = route(async (req) => {
   const user = await requireUser();
-  const input = permitInputSchema.parse(await req.json());
-  return created(await createPermit(input, user.id));
+  const body = createPermitRequestSchema.parse(await req.json());
+  const input = permitInputSchema.parse(body);
+  return created(await createPermit(input, user.id, body.importBatchId));
 });

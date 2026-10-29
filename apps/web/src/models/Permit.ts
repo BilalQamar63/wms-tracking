@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Schema, model, models, type Model, type SchemaDefinition, type Types } from 'mongoose';
 import { PERMIT_FIELD_LIST, type PermitDateFieldKey, type PermitFieldKey } from '@wms/shared';
 
@@ -47,5 +48,12 @@ permitSchema.index({ newPtwNumber: 1 });
 permitSchema.index({ company: 1 });
 permitSchema.index({ importBatchId: 1, status: 1 });
 
-export const PermitModel: Model<PermitDoc> =
-  (models.Permit as Model<PermitDoc> | undefined) ?? model<PermitDoc>('Permit', permitSchema);
+export const PermitModel: Model<PermitDoc> = (() => {
+  const cachedModel = models.Permit as Model<PermitDoc> | undefined;
+  if (cachedModel && PERMIT_FIELD_LIST.some((field) => !cachedModel.schema.path(field.key))) {
+    mongoose.deleteModel('Permit');
+  }
+  return (
+    (models.Permit as Model<PermitDoc> | undefined) ?? model<PermitDoc>('Permit', permitSchema)
+  );
+})();
