@@ -91,6 +91,21 @@ export interface PermitImportDayDTO {
   batches: PermitImportBatchDTO[];
 }
 
+export interface CompanyPermitStatsDTO {
+  company: string;
+  total: number;
+  active: number;
+  closed: number;
+}
+
+export interface PermitDashboardStatsDTO {
+  total: number;
+  companies: number;
+  active: number;
+  closed: number;
+  byCompany: CompanyPermitStatsDTO[];
+}
+
 export interface ApiSuccess<T> {
   success: true;
   data: T;

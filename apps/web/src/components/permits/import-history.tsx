@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils/cn';
 interface Props {
   selectedBatchId: string | null;
   currentSelected: boolean;
+  canManage: boolean;
   onSelect: (batchId: string) => void;
   onSelectCurrent: () => void;
   onAddPermit: (batchId: string) => void;
@@ -25,6 +26,7 @@ interface Props {
 export function ImportHistory({
   selectedBatchId,
   currentSelected,
+  canManage,
   onSelect,
   onSelectCurrent,
   onAddPermit,
@@ -47,8 +49,8 @@ export function ImportHistory({
           Imported register history
         </h2>
         <p className="mt-1 text-xs text-slate-500">
-          Each uploaded workbook is separate. Select it to view or edit its permits, add permits
-          directly to that upload, or export that upload’s latest data.
+          Each uploaded workbook is separate. Select it to view its permits
+          {canManage ? ', edit or add permits, or export its latest data.' : ' or export its data.'}
         </p>
       </header>
 
@@ -128,13 +130,15 @@ export function ImportHistory({
                               <Badge tone="green">{batch.closed} closed</Badge>
                             </span>
                             <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => onAddPermit(batch.id)}
-                              >
-                                Add permit
-                              </Button>
+                              {canManage && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => onAddPermit(batch.id)}
+                                >
+                                  Add permit
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="secondary"
@@ -144,16 +148,18 @@ export function ImportHistory({
                               >
                                 Export
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                aria-label={`Delete import ${batch.originalName}`}
-                                title="Delete import"
-                                onClick={() => onDeleteBatch(batch.id, batch.originalName)}
-                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {canManage && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={`Delete import ${batch.originalName}`}
+                                  title="Delete import"
+                                  onClick={() => onDeleteBatch(batch.id, batch.originalName)}
+                                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </>
                         )}

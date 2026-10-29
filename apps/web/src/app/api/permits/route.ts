@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { permitInputSchema, permitQuerySchema } from '@wms/shared';
-import { requireUser } from '@/lib/auth/session';
+import { requireAdmin, requireUser } from '@/lib/auth/session';
 import { created, ok, route, searchParamsToObject } from '@/lib/http/response';
 import { createPermit, listPermits } from '@/services/permit.service';
 
@@ -23,7 +23,7 @@ export const GET = route(async (req) => {
 });
 
 export const POST = route(async (req) => {
-  const user = await requireUser();
+  const user = await requireAdmin();
   const body = createPermitRequestSchema.parse(await req.json());
   const input = permitInputSchema.parse(body);
   return created(await createPermit(input, user.id, body.importBatchId));

@@ -4,6 +4,26 @@
  */
 export const DEPARTMENTS = ['Construction', 'Commissioning'] as const;
 
+export const MAIN_CONTRACTORS = ['JV-TR/NMDC'] as const;
+
+export const SUB_CONTRACTORS = [
+  'OQC',
+  'INCOL',
+  'CYLINGAS',
+  'DOUGLAS OHI',
+  'TARGET',
+  'AG POWER',
+  'PETROJECT PKG4',
+  'PENTA GLOBAL',
+  'NBTC',
+  'SINOPEC5TH',
+  'GRANITE',
+  'GERMAN GULF',
+  'NMDC INFRA',
+  'AL SHOUMUKH',
+  'BORGE',
+] as const;
+
 export const DISCIPLINES = [
   'Electrical',
   'Instrument',
@@ -34,11 +54,20 @@ export const CERTIFICATE_TYPES = [
   'Vehicle and Machine Entry Certificate',
 ] as const;
 
-export const PLANT_DIVISIONS = ['Habshan 5 Green Field', 'Habshan 5 Brown Field'] as const;
+export const PLANT_DIVISIONS = [
+  'Habshan 5 Green Field',
+  'Habshan 5 Green Field Plus',
+  'Habshan Complex Green Field Plus',
+  'Habshan 5 Brown Field',
+  'Ruwais NGL',
+  'Green Field Plus',
+] as const;
 
 export const YES_NO = ['Yes', 'No'] as const;
 
 export const PTW_STATUSES = ['Not Start Yet', 'Not Closed', 'Closed'] as const;
+
+export const WORK_PLANNING_TYPES = ['Planned', 'Emergency'] as const;
 
 export const DEFAULT_PTWC_APPROVER = 'Muhammad Sajid';
 

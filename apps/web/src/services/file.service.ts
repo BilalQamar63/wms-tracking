@@ -13,7 +13,7 @@ import { parsePermitWorkbook } from '@/lib/excel/workbook-parser';
 import { buildPermitWorkbook } from '@/lib/excel/workbook-builder';
 import { getEnv } from '@/lib/env';
 import { badRequest, forbidden, notFound } from '@/lib/http/errors';
-import { toFileRecordDTO, toUserRef } from '@/lib/mappers';
+import { toFileRecordDTO } from '@/lib/mappers';
 import { timestampForFileName } from '@/lib/utils/file-name';
 import { assertObjectId } from '@/lib/utils/object-id';
 import { FileRecordModel, type FileRecordDoc } from '@/models/FileRecord';
@@ -171,10 +171,8 @@ export async function getFileDetails(id: string): Promise<FileRecordDTO> {
 
 /** Only admins or the user who created the record may delete it. */
 export async function deleteFile(id: string, user: SessionUser): Promise<void> {
+  if (user.role !== 'admin') throw forbidden('Administrator access required');
   const doc = await getFileDoc(id);
-  const ownerId = doc.createdBy ? toUserRef(doc.createdBy)?.id : undefined;
-
-  if (user.role !== 'admin' && ownerId !== user.id) throw forbidden();
 
   if (doc.kind === 'import') await PermitModel.deleteMany({ importBatchId: id });
   await FileRecordModel.deleteOne({ _id: id });

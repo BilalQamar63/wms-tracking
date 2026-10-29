@@ -30,13 +30,36 @@ const normalizeHeader = (value: string): string => value.toLowerCase().replace(/
 const HEADER_LOOKUP = new Map<string, (typeof PERMIT_FIELD_LIST)[number]>(
   PERMIT_FIELD_LIST.map((field) => [normalizeHeader(field.header), field]),
 );
+const COMPANY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'company');
+if (COMPANY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Company'), COMPANY_FIELD);
 const WORK_ACTIVITY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'workActivity');
 if (WORK_ACTIVITY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Work Activity'), WORK_ACTIVITY_FIELD);
+const PROJECT_NUMBER_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'projectNumber');
+if (PROJECT_NUMBER_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Meram Project No-1000482'), PROJECT_NUMBER_FIELD);
+}
+const START_DATE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'planValidStartDate');
+if (START_DATE_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Plan Valid Start Date'), START_DATE_FIELD);
+}
+const END_DATE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'planValidEndDate');
+if (END_DATE_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Plan Valid End Date'), END_DATE_FIELD);
+}
+const CLOSED_DATE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'closedDate');
+if (CLOSED_DATE_FIELD) HEADER_LOOKUP.set(normalizeHeader('Closed Date'), CLOSED_DATE_FIELD);
 const HARD_COPY_FIELD = PERMIT_FIELD_LIST.find(
   (field) => field.key === 'receivedOriginalClosedPtw',
 );
 if (HARD_COPY_FIELD) {
   HEADER_LOOKUP.set(normalizeHeader('Received Original Closed PTW'), HARD_COPY_FIELD);
+  HEADER_LOOKUP.set(normalizeHeader('Received Original Closed PTW (Hard Copy)'), HARD_COPY_FIELD);
+}
+const SOFT_COPY_FIELD = PERMIT_FIELD_LIST.find(
+  (field) => field.key === 'receivedOriginalClosedPtwSoftCopy',
+);
+if (SOFT_COPY_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Received Original Closed PTW (Soft Copy)'), SOFT_COPY_FIELD);
 }
 const SR_NO_KEY = normalizeHeader(SR_NO_HEADER);
 

@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import {
   PERMIT_FIELD_LIST,
+  FORM_SECTIONS,
   REGISTER_TITLE,
   SR_NO_HEADER,
   ymdToUtcDate,
@@ -12,6 +13,7 @@ import {
   HEADER_ROW,
   LISTS_SHEET_NAME,
   SHEET_NAME,
+  SECTION_ROW,
   SPARE_ROWS,
   TITLE_ROW,
 } from './constants';
@@ -52,8 +54,11 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   workbook.creator = 'WMS Tracking';
   workbook.created = new Date();
 
+  const validityEndIndex = PERMIT_FIELD_LIST.findIndex((field) => field.key === 'ptwValidity');
+  if (validityEndIndex < 0) throw new Error('PTW Validity field is missing from the permit fields');
+  const freezeColumns = validityEndIndex + 2;
   const sheet = workbook.addWorksheet(SHEET_NAME, {
-    views: [{ state: 'frozen', xSplit: 3, ySplit: HEADER_ROW }],
+    views: [{ state: 'frozen', xSplit: freezeColumns, ySplit: HEADER_ROW }],
   });
   const lists = addListsSheet(workbook);
   const lastColumn = PERMIT_FIELD_LIST.length + 1;
@@ -66,6 +71,28 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   title.alignment = { horizontal: 'center', vertical: 'middle' };
   title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E78' } };
   sheet.getRow(TITLE_ROW).height = 24;
+
+  // Section headings span each contiguous field group, matching the permit form layout.
+  const sectionRow = sheet.getRow(SECTION_ROW);
+  sectionRow.height = 24;
+  let firstFieldIndex = 0;
+  for (const section of FORM_SECTIONS) {
+    const sectionFields = PERMIT_FIELD_LIST.filter((field) => field.section === section.id);
+    if (!sectionFields.length) continue;
+    const firstColumn = firstFieldIndex === 0 ? 1 : firstFieldIndex + 2;
+    const lastColumnInSection = firstFieldIndex + sectionFields.length + 1;
+    for (let column = firstColumn; column <= lastColumnInSection; column += 1) {
+      const cell = sectionRow.getCell(column);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+      cell.border = BORDER;
+    }
+    sheet.mergeCells(SECTION_ROW, firstColumn, SECTION_ROW, lastColumnInSection);
+    const sectionCell = sectionRow.getCell(firstColumn);
+    sectionCell.value = section.title;
+    sectionCell.font = { name: FONT, size: 11, bold: true, color: { argb: 'FFFF0000' } };
+    sectionCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    firstFieldIndex += sectionFields.length;
+  }
 
   // Header
   const headers = [SR_NO_HEADER, ...PERMIT_FIELD_LIST.map((f) => f.header)];

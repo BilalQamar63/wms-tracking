@@ -55,8 +55,7 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
     }
   }
 
-  const canDelete = (file: FileRecordDTO) =>
-    currentUser.role === 'admin' || file.createdBy?.id === currentUser.id;
+  const canDelete = currentUser.role === 'admin';
 
   return (
     <>
@@ -180,7 +179,7 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
                             )}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right">
-                            {canDelete(file) && (
+                            {canDelete && (
                               <Button
                                 variant="ghost"
                                 size="sm"

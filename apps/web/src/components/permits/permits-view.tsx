@@ -21,7 +21,7 @@ import { ImportHistory } from './import-history';
 
 const PAGE_SIZE = 20;
 
-export function PermitsView() {
+export function PermitsView({ canManage }: { canManage: boolean }) {
   const toast = useToast();
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [page, setPage] = useState(1);
@@ -139,19 +139,21 @@ export function PermitsView() {
   return (
     <>
       <PageHeader
-        title="PTW Register"
+        title="Meram Master PTW Tracking Register"
         description="Manage the current register or edit a dated imported register, then export its updated Excel file."
         actions={
           <>
-            <Button variant="secondary" onClick={() => setImportOpen(true)}>
-              <Upload className="h-4 w-4" /> Import
-            </Button>
+            {canManage && (
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4" /> Import
+              </Button>
+            )}
             {viewMode && (
               <Button variant="secondary" onClick={exportExcel} loading={exporting}>
                 <Download className="h-4 w-4" /> {selectedBatchId ? 'Export snapshot' : 'Export'}
               </Button>
             )}
-            {viewMode === 'current' && (
+            {viewMode === 'current' && canManage && (
               <Button
                 onClick={() => {
                   setEditing(null);
@@ -168,6 +170,7 @@ export function PermitsView() {
       <ImportHistory
         selectedBatchId={selectedBatchId}
         currentSelected={viewMode === 'current'}
+        canManage={canManage}
         onAddPermit={(batchId) => {
           setViewMode('snapshot');
           setSelectedBatchId(batchId);
@@ -195,10 +198,14 @@ export function PermitsView() {
 
       {viewMode ? (
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          {selectedBatchId ? (
+          {selectedBatchId && canManage ? (
             <div className="border-b border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-900">
               Viewing this imported workbook only. Changes and new permits stay in this snapshot.
               Use its <b>Export</b> action above to download the updated Excel file.
+            </div>
+          ) : selectedBatchId ? (
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Read-only view of this imported workbook.
             </div>
           ) : (
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -215,6 +222,7 @@ export function PermitsView() {
             <>
               <PermitTable
                 permits={data.items}
+                canManage={canManage}
                 onEdit={(permit) => {
                   setEditing(permit);
                   setFormOpen(true);
@@ -242,49 +250,57 @@ export function PermitsView() {
         </EmptyState>
       )}
 
-      <PermitFormDialog
-        open={formOpen}
-        permit={editing}
-        importBatchId={selectedBatchId}
-        onClose={() => setFormOpen(false)}
-        onSaved={async () => {
-          await refreshRegister();
-        }}
-      />
-      <ImportDialog
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImported={() => {
-          setViewMode(null);
-          setSelectedBatchId(null);
-          refresh();
-          refreshFileHistory();
-        }}
-      />
-      <ConfirmDialog
-        open={!!deleting}
-        title="Delete permit"
-        loading={deleteBusy}
-        onConfirm={confirmDelete}
-        onClose={() => setDeleting(null)}
-      >
-        Permanently delete Sr No <b>{deleting?.srNo}</b>
-        {deleting?.newPtwNumber ? <> ({deleting.newPtwNumber})</> : null}?
-        {selectedBatchId
-          ? ' This removes it only from this imported snapshot.'
-          : ' This cannot be undone.'}
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={!!deletingBatch}
-        title="Delete imported workbook"
-        confirmLabel="Delete import"
-        loading={deleteBusy}
-        onConfirm={confirmDeleteBatch}
-        onClose={() => setDeletingBatch(null)}
-      >
-        Delete <b>{deletingBatch?.name}</b> and all permits saved in this imported snapshot? This
-        cannot be undone.
-      </ConfirmDialog>
+      {canManage && (
+        <PermitFormDialog
+          open={formOpen}
+          permit={editing}
+          importBatchId={selectedBatchId}
+          onClose={() => setFormOpen(false)}
+          onSaved={async () => {
+            await refreshRegister();
+          }}
+        />
+      )}
+      {canManage && (
+        <ImportDialog
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImported={() => {
+            setViewMode(null);
+            setSelectedBatchId(null);
+            refresh();
+            refreshFileHistory();
+          }}
+        />
+      )}
+      {canManage && (
+        <>
+          <ConfirmDialog
+            open={!!deleting}
+            title="Delete permit"
+            loading={deleteBusy}
+            onConfirm={confirmDelete}
+            onClose={() => setDeleting(null)}
+          >
+            Permanently delete Sr No <b>{deleting?.srNo}</b>
+            {deleting?.newPtwNumber ? <> ({deleting.newPtwNumber})</> : null}?
+            {selectedBatchId
+              ? ' This removes it only from this imported snapshot.'
+              : ' This cannot be undone.'}
+          </ConfirmDialog>
+          <ConfirmDialog
+            open={!!deletingBatch}
+            title="Delete imported workbook"
+            confirmLabel="Delete import"
+            loading={deleteBusy}
+            onConfirm={confirmDeleteBatch}
+            onClose={() => setDeletingBatch(null)}
+          >
+            Delete <b>{deletingBatch?.name}</b> and all permits saved in this imported snapshot?
+            This cannot be undone.
+          </ConfirmDialog>
+        </>
+      )}
     </>
   );
 }
