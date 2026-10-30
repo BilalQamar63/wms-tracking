@@ -66,6 +66,7 @@ export const PLANT_DIVISIONS = [
 export const YES_NO = ['Yes', 'No'] as const;
 
 export const PTW_STATUSES = ['Not Closed', 'Closed'] as const;
+export const PERMIT_STATUS_FILTERS = ['Active', 'Closed', 'Overdue'] as const;
 
 export const WORK_PLANNING_TYPES = ['Planned', 'Emergency'] as const;
 

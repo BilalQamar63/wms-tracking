@@ -6,6 +6,8 @@ import {
   FORM_SECTIONS,
   PERMIT_FIELD_LIST,
   formatDisplayDate,
+  getTodayYmd,
+  toDateInputValue,
   type FormSection,
   type PermitFieldKey,
   type PermitDTO,
@@ -42,8 +44,11 @@ interface Props {
 
 function renderCell(permit: PermitDTO, key: string, type: string) {
   const value = permit[key as keyof PermitDTO] as string | string[] | undefined;
-  if (key === 'status')
-    return <StatusBadge status={typeof value === 'string' ? value : undefined} />;
+  if (key === 'status') {
+    const endDate = toDateInputValue(permit.planValidEndDate);
+    const status = value !== 'Closed' && endDate && endDate < getTodayYmd() ? 'Overdue' : value;
+    return <StatusBadge status={typeof status === 'string' ? status : undefined} />;
+  }
   if (key === 'ptwValidity')
     return (
       <PlanCountdown startDate={permit.planValidStartDate} endDate={permit.planValidEndDate} />

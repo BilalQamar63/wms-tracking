@@ -50,10 +50,7 @@ function toFormValues(permit: PermitDTO | null): PermitInput {
             ? raw
             : '';
   }
-  if (!permit) {
-    values.status = 'Not Closed';
-    values.approvedByPtwc = DEFAULT_PTWC_APPROVER;
-  }
+  if (!permit) values.approvedByPtwc = DEFAULT_PTWC_APPROVER;
   if (permit?.status === 'Not Start Yet') values.status = 'Not Closed';
   return values as PermitInput;
 }

@@ -6,8 +6,8 @@ import {
   DISCIPLINES,
   MAIN_CONTRACTORS,
   PERMIT_FIELD_LIST,
+  PERMIT_STATUS_FILTERS,
   PLANT_DIVISIONS,
-  PTW_STATUSES,
   PTW_TYPES,
   SUB_CONTRACTORS,
 } from '@wms/shared';
@@ -42,7 +42,7 @@ export function PermitFilters({ value, onChange }: Props) {
       <Select
         aria-label="Status"
         placeholder="All statuses"
-        options={PTW_STATUSES}
+        options={PERMIT_STATUS_FILTERS}
         value={value.status}
         onChange={(e) => set('status', e.target.value)}
       />

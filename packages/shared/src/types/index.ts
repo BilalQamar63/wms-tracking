@@ -137,6 +137,7 @@ export interface CompanyPermitStatsDTO {
   total: number;
   active: number;
   closed: number;
+  overdue: number;
 }
 
 export interface PermitDashboardStatsDTO {
@@ -145,6 +146,7 @@ export interface PermitDashboardStatsDTO {
   subContractors: number;
   active: number;
   closed: number;
+  overdue: number;
   byContractor: CompanyPermitStatsDTO[];
 }
 

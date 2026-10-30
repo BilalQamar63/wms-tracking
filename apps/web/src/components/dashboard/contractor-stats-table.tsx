@@ -1,29 +1,16 @@
 import type { CompanyPermitStatsDTO } from '@wms/shared';
 import { Download } from 'lucide-react';
-import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Select } from '@/components/ui/select';
-
-export type CompanyExportStatus = 'all' | 'active' | 'closed';
 
 interface Props {
   contractors: CompanyPermitStatsDTO[];
-  onExport: (mainContractor: string, subContractor: string, status: CompanyExportStatus) => void;
+  onExport: (mainContractor: string, subContractor: string) => void;
   exportingKey: string | null;
-  canExport: boolean;
 }
 
-const EXPORT_OPTIONS = [
-  { value: 'all', label: 'All permits' },
-  { value: 'active', label: 'Active' },
-  { value: 'closed', label: 'Closed' },
-] as const;
-
-export function ContractorStatsTable({ contractors, onExport, exportingKey, canExport }: Props) {
-  const [statuses, setStatuses] = useState<Record<string, CompanyExportStatus>>({});
-
+export function ContractorStatsTable({ contractors, onExport, exportingKey }: Props) {
   if (contractors.length === 0) {
     return (
       <EmptyState title="No contractors found">Try changing the dashboard filters.</EmptyState>
@@ -51,6 +38,9 @@ export function ContractorStatsTable({ contractors, onExport, exportingKey, canE
               Closed
             </th>
             <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Overdue
+            </th>
+            <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
               Download
             </th>
           </tr>
@@ -58,7 +48,6 @@ export function ContractorStatsTable({ contractors, onExport, exportingKey, canE
         <tbody className="divide-y divide-slate-100 bg-white">
           {contractors.map((contractor) => {
             const key = `${contractor.mainContractor}|${contractor.subContractor}`;
-            const exportStatus = statuses[key] ?? 'all';
             return (
               <tr key={key} className="hover:bg-slate-50">
                 <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-900">
@@ -76,29 +65,18 @@ export function ContractorStatsTable({ contractors, onExport, exportingKey, canE
                 <td className="px-5 py-4 text-right text-sm">
                   <Badge tone="green">{contractor.closed}</Badge>
                 </td>
+                <td className="px-5 py-4 text-right text-sm">
+                  <Badge tone="red">{contractor.overdue}</Badge>
+                </td>
                 <td className="px-5 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    <Select
-                      aria-label={`Export status for ${contractor.mainContractor}, ${contractor.subContractor}`}
-                      options={EXPORT_OPTIONS}
-                      value={exportStatus}
-                      onChange={(event) =>
-                        setStatuses((current) => ({
-                          ...current,
-                          [key]: event.target.value as CompanyExportStatus,
-                        }))
-                      }
-                      className="min-w-40"
-                    />
                     <Button
                       size="sm"
                       variant="secondary"
-                      aria-label={`Download ${exportStatus} permits for ${contractor.mainContractor}, ${contractor.subContractor}`}
-                      loading={exportingKey === `${key}:${exportStatus}`}
-                      disabled={exportingKey !== null || !canExport}
-                      onClick={() =>
-                        onExport(contractor.mainContractor, contractor.subContractor, exportStatus)
-                      }
+                      aria-label={`Export permits for ${contractor.mainContractor}, ${contractor.subContractor}`}
+                      loading={exportingKey === key}
+                      disabled={exportingKey !== null}
+                      onClick={() => onExport(contractor.mainContractor, contractor.subContractor)}
                     >
                       <Download className="h-4 w-4" />
                       Export

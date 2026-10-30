@@ -4,7 +4,7 @@ import type {
   PermitFilters,
   PermitFieldKey,
 } from '@wms/shared';
-import { PERMIT_FIELD_LIST } from '@wms/shared';
+import { getTodayYmd, PERMIT_FIELD_LIST, PTW_TYPES } from '@wms/shared';
 import type { SessionUser } from '@wms/shared';
 import type { PipelineStage } from 'mongoose';
 import { ymdToUtcDate } from '@wms/shared';
@@ -17,7 +17,7 @@ import { timestampForFileName, sanitizeFileName } from '@/lib/utils/file-name';
 import { FileRecordModel } from '@/models/FileRecord';
 import { PermitModel } from '@/models/Permit';
 
-export type CompanyExportStatus = 'all' | 'active' | 'closed';
+export type CompanyExportStatus = 'all' | 'active' | 'closed' | 'overdue';
 
 interface CompanyAggregateRow {
   _id: { main: string; sub: string };
@@ -26,6 +26,7 @@ interface CompanyAggregateRow {
   total: number;
   active: number;
   closed: number;
+  overdue: number;
 }
 
 function uniquePermitPipeline(): PipelineStage[] {
@@ -62,6 +63,27 @@ function uniquePermitPipeline(): PipelineStage[] {
       },
     },
     { $replaceRoot: { newRoot: '$permit' } },
+    {
+      $addFields: {
+        _dashboardStatus: {
+          $switch: {
+            branches: [
+              { case: { $eq: ['$status', 'Closed'] }, then: 'Closed' },
+              {
+                case: {
+                  $and: [
+                    { $eq: [{ $type: '$planValidEndDate' }, 'date'] },
+                    { $lt: ['$planValidEndDate', ymdToUtcDate(getTodayYmd())] },
+                  ],
+                },
+                then: 'Overdue',
+              },
+            ],
+            default: 'Active',
+          },
+        },
+      },
+    },
   ];
 }
 
@@ -74,7 +96,8 @@ function dashboardPermitMatch(filters: PermitFilters): PipelineStage.Match {
     match._dashboardSubContractorKey = filters.subContractor.trim().toLowerCase();
   }
   if (filters.ptwType) match.newPtwType = filters.ptwType;
-  if (filters.status) match.status = filters.status;
+  if (filters.status)
+    match._dashboardStatus = filters.status === 'Not Closed' ? 'Active' : filters.status;
   if (filters.department) match.department = filters.department;
   if (filters.discipline) match.discipline = filters.discipline;
   if (filters.plantDivision) match.plantDivision = filters.plantDivision;
@@ -132,7 +155,7 @@ export async function getPermitDashboardStats(
         subContractorKey: {
           $toLower: { $trim: { input: { $ifNull: ['$subContractor', ''] } } },
         },
-        status: 1,
+        status: '$_dashboardStatus',
       },
     },
     {
@@ -141,8 +164,9 @@ export async function getPermitDashboardStats(
         mainContractor: { $first: '$mainContractor' },
         subContractor: { $first: '$subContractor' },
         total: { $sum: 1 },
-        active: { $sum: { $cond: [{ $ne: ['$status', 'Closed'] }, 1, 0] } },
+        active: { $sum: { $cond: [{ $eq: ['$status', 'Active'] }, 1, 0] } },
         closed: { $sum: { $cond: [{ $eq: ['$status', 'Closed'] }, 1, 0] } },
+        overdue: { $sum: { $cond: [{ $eq: ['$status', 'Overdue'] }, 1, 0] } },
       },
     },
     { $sort: { total: -1, '_id.main': 1, '_id.sub': 1 } },
@@ -154,14 +178,16 @@ export async function getPermitDashboardStats(
     total: row.total,
     active: row.active,
     closed: row.closed,
+    overdue: row.overdue,
   }));
   const totals = byContractor.reduce(
     (result, contractor) => ({
       total: result.total + contractor.total,
       active: result.active + contractor.active,
       closed: result.closed + contractor.closed,
+      overdue: result.overdue + contractor.overdue,
     }),
-    { total: 0, active: 0, closed: 0 },
+    { total: 0, active: 0, closed: 0, overdue: 0 },
   );
 
   return {
@@ -186,11 +212,12 @@ export async function exportCompanyPermits(
   mainContractor: string,
   subContractor: string,
   fieldKeys: readonly PermitFieldKey[],
+  ptwTypes: readonly string[],
   user: SessionUser,
 ): Promise<{ buffer: Buffer; fileName: string; rowCount: number }> {
   await connectDb();
 
-  const match = dashboardPermitMatch(filters);
+  const match = dashboardPermitMatch({ ...filters, status: '', ptwType: '' });
   const conditions: Record<string, unknown>[] = [match.$match];
   conditions.push({
     _dashboardCompanyKey:
@@ -198,8 +225,8 @@ export async function exportCompanyPermits(
     _dashboardSubContractorKey:
       subContractor === 'Unspecified' ? '' : subContractor.trim().toLowerCase(),
   });
-  if (exportStatus !== 'all')
-    conditions.push({ status: exportStatus === 'closed' ? 'Closed' : { $ne: 'Closed' } });
+  if (exportStatus !== 'all') conditions.push({ _dashboardStatus: exportStatus });
+  conditions.push({ newPtwType: { $in: [...ptwTypes] } });
   const docs = await PermitModel.aggregate([
     ...uniquePermitPipeline(),
     { $match: { $and: conditions } },
@@ -209,6 +236,7 @@ export async function exportCompanyPermits(
         '_dashboardSubContractorKey',
         '_dashboardPtwKey',
         '_dashboardPermitKey',
+        '_dashboardStatus',
       ],
     },
     { $sort: { srNo: 1 } },

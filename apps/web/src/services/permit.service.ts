@@ -100,13 +100,29 @@ export async function getCurrentRegisterSummary(): Promise<PermitRegisterSummary
 
 function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<PermitDoc> {
   const filter: FilterQuery<PermitDoc> = {};
+  const conditions: FilterQuery<PermitDoc>[] = [];
   filter.importBatchId = batchId ? batchId : { $exists: false };
 
   if (filters.search) {
     const regex = new RegExp(escapeRegex(filters.search), 'i');
-    filter.$or = SEARCH_FIELDS.map((field) => ({ [field]: regex }));
+    conditions.push({ $or: SEARCH_FIELDS.map((field) => ({ [field]: regex })) });
   }
-  if (filters.status) filter.status = filters.status;
+  if (filters.status === 'Closed') {
+    filter.status = 'Closed';
+  } else if (filters.status === 'Overdue') {
+    conditions.push({
+      status: { $ne: 'Closed' },
+      planValidEndDate: { $lt: ymdToUtcDate(getTodayYmd()) },
+    });
+  } else if (filters.status === 'Active' || filters.status === 'Not Closed') {
+    conditions.push({
+      status: { $ne: 'Closed' },
+      $or: [
+        { planValidEndDate: { $gte: ymdToUtcDate(getTodayYmd()) } },
+        { planValidEndDate: { $exists: false } },
+      ],
+    });
+  }
   if (filters.department) filter.department = filters.department;
   if (filters.discipline) filter.discipline = filters.discipline;
   if (filters.plantDivision) filter.plantDivision = filters.plantDivision;
@@ -135,6 +151,7 @@ function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<Perm
         : {}),
     };
   }
+  if (conditions.length > 0) filter.$and = conditions;
   return filter;
 }
 
