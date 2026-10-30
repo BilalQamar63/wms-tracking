@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PERMIT_FIELD_LIST, type PermitFieldDef } from '../constants/permit-fields';
-import { addDaysToYmd, getTodayYmd } from '../utils/date';
+import { getTodayYmd } from '../utils/date';
 import type { PermitInput } from '../types';
 
 const emptyToUndefined = (value: unknown): unknown =>
@@ -71,6 +71,7 @@ export const permitInputSchema = z.object(shape).superRefine((value, ctx) => {
   for (const field of PERMIT_FIELD_LIST) {
     if (
       field.type === 'date' &&
+      field.key !== 'planValidStartDate' &&
       field.key !== 'planValidEndDate' &&
       field.key !== 'closedDate' &&
       typeof value[field.key as keyof typeof value] === 'string' &&
@@ -90,19 +91,7 @@ export const permitInputSchema = z.object(shape).superRefine((value, ctx) => {
         path: ['planValidEndDate'],
         message: 'End date cannot be before the start date',
       });
-    } else if (end > addDaysToYmd(start, 13)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['planValidEndDate'],
-        message: 'Permit validity cannot exceed 14 calendar days',
-      });
     }
-  } else if (end && end > today) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['planValidEndDate'],
-      message: 'Date cannot be in the future',
-    });
   }
 }) as unknown as z.ZodType<PermitInput, z.ZodTypeDef, unknown>;
 

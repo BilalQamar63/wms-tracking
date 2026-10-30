@@ -123,6 +123,14 @@ export interface PermitImportDayDTO {
   batches: PermitImportBatchDTO[];
 }
 
+export interface PermitRegisterSummaryDTO {
+  total: number;
+  active: number;
+  closed: number;
+  notClosed: number;
+  updatedAt: string | null;
+}
+
 export interface CompanyPermitStatsDTO {
   company: string;
   total: number;

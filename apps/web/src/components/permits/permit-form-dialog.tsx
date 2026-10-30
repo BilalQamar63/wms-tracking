@@ -63,6 +63,7 @@ export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved
   const isEdit = !!permit;
 
   const {
+    control,
     register,
     setValue,
     handleSubmit,
@@ -113,11 +114,16 @@ export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved
     >
       <form id="permit-form" onSubmit={handleSubmit(onSubmit)} noValidate>
         <div className="mb-5 rounded-lg border border-brand-100 bg-brand-50/60 px-4 py-3 text-sm text-brand-900">
-          Planned start dates cannot be in the future. PTW closed dates may be in the future. Plan
-          validity is 14 calendar days; choosing a start date fills the read-only end date
-          automatically.
+          Planned start dates may be in the future. PTW closed dates may also be in the future.
+          Choosing a start date fills the end date with a 14-day default; you can adjust it to any
+          date on or after the start date.
         </div>
-        <PermitFormFields register={register} setValue={setValue} errors={errors} />
+        <PermitFormFields
+          control={control}
+          register={register}
+          setValue={setValue}
+          errors={errors}
+        />
       </form>
     </Modal>
   );

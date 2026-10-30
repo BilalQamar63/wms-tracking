@@ -46,6 +46,18 @@ export function addDaysToYmd(ymd: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Counts calendar days from the plan start through its end, inclusive. */
+export function getPlanDurationDays(startDate: string, endDate: string): number | null {
+  const isValidDate = (ymd: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+    const date = ymdToUtcDate(ymd);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === ymd;
+  };
+  if (!isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate) return null;
+
+  return (ymdToUtcDate(endDate).getTime() - ymdToUtcDate(startDate).getTime()) / 86_400_000 + 1;
+}
+
 /** Returns the signed number of calendar days from today until `date`. */
 export function getCalendarDaysUntil(date: string, now = new Date()): number | null {
   const ymd = date.slice(0, 10);

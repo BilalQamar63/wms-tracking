@@ -1,11 +1,18 @@
 'use client';
 
 import type { ChangeEvent } from 'react';
-import type { FieldErrors, UseFormRegister, UseFormSetValue } from 'react-hook-form';
+import {
+  useWatch,
+  type Control,
+  type FieldErrors,
+  type UseFormRegister,
+  type UseFormSetValue,
+} from 'react-hook-form';
 import {
   addDaysToYmd,
   FORM_SECTIONS,
   PERMIT_FIELD_LIST,
+  getPlanDurationDays,
   getTodayYmd,
   type PermitFieldDef,
   type PermitInput,
@@ -17,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils/cn';
 
 interface Props {
+  control: Control<PermitInput>;
   register: UseFormRegister<PermitInput>;
   setValue: UseFormSetValue<PermitInput>;
   errors: FieldErrors<PermitInput>;
@@ -88,13 +96,14 @@ function FieldControl({
           id={id}
           type="date"
           max={
-            field.key === 'planValidEndDate' || field.key === 'closedDate'
+            field.key === 'planValidStartDate' ||
+            field.key === 'planValidEndDate' ||
+            field.key === 'closedDate'
               ? undefined
               : getTodayYmd()
           }
           invalid={invalid}
           {...registration}
-          readOnly={field.key === 'planValidEndDate'}
           onChange={(event: ChangeEvent<HTMLInputElement>) => {
             registration.onChange(event);
             if (field.key === 'planValidStartDate') {
@@ -129,12 +138,19 @@ function FieldControl({
 }
 
 /** Renders every register field, grouped by section – generated from the shared field config. */
-export function PermitFormFields({ register, setValue, errors }: Props) {
+export function PermitFormFields({ control, register, setValue, errors }: Props) {
+  const planStartDate = useWatch({ control, name: 'planValidStartDate' });
+  const planEndDate = useWatch({ control, name: 'planValidEndDate' });
+  const planDuration =
+    planStartDate && planEndDate ? getPlanDurationDays(planStartDate, planEndDate) : null;
+
   return (
     <div className="space-y-6">
       {FORM_SECTIONS.map((section) => {
         const fields = PERMIT_FIELD_LIST.filter(
-          (field) => field.section === section.id && field.type !== 'computed',
+          (field) =>
+            field.section === section.id &&
+            (field.type !== 'computed' || field.key === 'ptwValidity'),
         );
         return (
           <fieldset key={section.id}>
@@ -148,17 +164,31 @@ export function PermitFormFields({ register, setValue, errors }: Props) {
                   <FormField
                     key={field.key}
                     label={field.header}
-                    htmlFor={`permit-${field.key}`}
+                    htmlFor={field.type === 'computed' ? undefined : `permit-${field.key}`}
                     required={field.required}
                     error={error}
                     className={cn(field.fullWidth && 'sm:col-span-2')}
                   >
-                    <FieldControl
-                      field={field}
-                      register={register}
-                      setValue={setValue}
-                      invalid={!!error}
-                    />
+                    {field.type === 'computed' ? (
+                      <div
+                        id={`permit-${field.key}`}
+                        aria-live="polite"
+                        className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700"
+                      >
+                        {planDuration === null
+                          ? planStartDate && planEndDate
+                            ? 'End date must be on or after start date'
+                            : 'Select planned start and end dates'
+                          : `${planDuration} ${planDuration === 1 ? 'day' : 'days'} left`}
+                      </div>
+                    ) : (
+                      <FieldControl
+                        field={field}
+                        register={register}
+                        setValue={setValue}
+                        invalid={!!error}
+                      />
+                    )}
                   </FormField>
                 );
               })}

@@ -1,6 +1,7 @@
 import type { FilterQuery } from 'mongoose';
 import {
   PERMIT_FIELD_LIST,
+  getTodayYmd,
   toDateInputValue,
   ymdToUtcDate,
   type ImportFieldApproval,
@@ -12,6 +13,7 @@ import {
   type PermitFilters,
   type PermitInput,
   type PermitQuery,
+  type PermitRegisterSummaryDTO,
 } from '@wms/shared';
 import { connectDb } from '@/lib/db/mongoose';
 import { badRequest, conflict, notFound } from '@/lib/http/errors';
@@ -36,6 +38,65 @@ const SEARCH_FIELDS = [
   'equipmentTagNo',
   'approvedByPtwc',
 ] as const;
+
+export async function getCurrentRegisterSummary(): Promise<PermitRegisterSummaryDTO> {
+  await connectDb();
+  const today = ymdToUtcDate(getTodayYmd());
+  const tomorrow = new Date(today.getTime() + 86_400_000);
+  const [counts, latestPermit, latestImport] = await Promise.all([
+    PermitModel.aggregate<{
+      total: number;
+      active: number;
+      closed: number;
+      notClosed: number;
+    }>([
+      { $match: { importBatchId: { $exists: false } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$status', 'Closed'] },
+                    { $lte: ['$planValidStartDate', new Date(tomorrow.getTime() - 1)] },
+                    { $gte: ['$planValidEndDate', today] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          closed: { $sum: { $cond: [{ $eq: ['$status', 'Closed'] }, 1, 0] } },
+          notClosed: { $sum: { $cond: [{ $eq: ['$status', 'Not Closed'] }, 1, 0] } },
+        },
+      },
+    ]),
+    PermitModel.findOne({ importBatchId: { $exists: false } })
+      .sort({ updatedAt: -1 })
+      .select('updatedAt')
+      .lean<Pick<PermitDoc, 'updatedAt'> | null>(),
+    FileRecordModel.findOne({ kind: 'import' })
+      .sort({ createdAt: -1 })
+      .select('createdAt')
+      .lean<{ createdAt: Date } | null>(),
+  ]);
+  const totals = counts[0];
+  const latestUpdatedAt = [latestPermit?.updatedAt, latestImport?.createdAt]
+    .filter((date): date is Date => date instanceof Date)
+    .sort((left, right) => right.getTime() - left.getTime())[0];
+
+  return {
+    total: totals?.total ?? 0,
+    active: totals?.active ?? 0,
+    closed: totals?.closed ?? 0,
+    notClosed: totals?.notClosed ?? 0,
+    updatedAt: latestUpdatedAt?.toISOString() ?? null,
+  };
+}
 
 function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<PermitDoc> {
   const filter: FilterQuery<PermitDoc> = {};
