@@ -107,6 +107,17 @@ export const permitFiltersSchema = z.object({
   department: optionalString,
   discipline: optionalString,
   plantDivision: optionalString,
+  company: optionalString,
+  subContractor: optionalString,
+  ptwType: optionalString,
+  fieldKey: z
+    .string()
+    .refine(
+      (key) => PERMIT_FIELD_LIST.some((field) => field.key === key && field.type !== 'computed'),
+      'Unknown permit field',
+    )
+    .optional(),
+  fieldValue: optionalString,
   dateFrom: optionalDate,
   dateTo: optionalDate,
   batchId: z

@@ -8,6 +8,11 @@ export interface PermitFilterState {
   department: string;
   discipline: string;
   plantDivision: string;
+  company: string;
+  subContractor: string;
+  ptwType: string;
+  fieldKey: string;
+  fieldValue: string;
   dateFrom: string;
   dateTo: string;
 }
@@ -18,6 +23,11 @@ export const EMPTY_PERMIT_FILTERS: PermitFilterState = {
   department: '',
   discipline: '',
   plantDivision: '',
+  company: '',
+  subContractor: '',
+  ptwType: '',
+  fieldKey: '',
+  fieldValue: '',
   dateFrom: '',
   dateTo: '',
 };

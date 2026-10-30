@@ -5,8 +5,10 @@ import {
   REGISTER_TITLE,
   SR_NO_HEADER,
   formatPlanValidity,
+  toDateInputValue,
   ymdToUtcDate,
   type PermitDTO,
+  type PermitFieldKey,
 } from '@wms/shared';
 import {
   DATE_FORMAT,
@@ -23,13 +25,28 @@ const FONT = 'Calibri';
 const THIN = { style: 'thin', color: { argb: 'FFBFBFBF' } } as const;
 const BORDER: Partial<ExcelJS.Borders> = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
+function excelDateExpression(value?: string): string {
+  const ymd = toDateInputValue(value);
+  if (!ymd) return '""';
+  const [year, month, day] = ymd.split('-');
+  return `DATE(${year},${month},${day})`;
+}
+
+function ptwValidityFormula(startDate: string, endDate: string): string {
+  const duration = `${endDate}-${startDate}+1`;
+  return `IF(OR(${startDate}="",${endDate}=""),"",IF(${duration}<1,"Invalid date range",IF(${duration}=1,"1 day left",${duration}&" days left")))`;
+}
+
 /** Writes every dropdown option list to a hidden sheet and returns the range reference per field. */
-function addListsSheet(workbook: ExcelJS.Workbook): Map<string, string> {
+function addListsSheet(
+  workbook: ExcelJS.Workbook,
+  fields: typeof PERMIT_FIELD_LIST,
+): Map<string, string> {
   const sheet = workbook.addWorksheet(LISTS_SHEET_NAME, { state: 'hidden' });
   const ranges = new Map<string, string>();
   let column = 1;
 
-  for (const field of PERMIT_FIELD_LIST) {
+  for (const field of fields) {
     if (!['select', 'radio', 'multiselect'].includes(field.type) || !field.options) continue;
     const letter = sheet.getColumn(column).letter;
     sheet.getCell(1, column).value = field.header;
@@ -50,14 +67,20 @@ function addListsSheet(workbook: ExcelJS.Workbook): Map<string, string> {
  * (title row, header on row 3, data from row 4) with dropdown validation on every select column.
  * Passing an empty list produces a blank import template.
  */
-export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer> {
+export async function buildPermitWorkbook(
+  permits: PermitDTO[],
+  fieldKeys?: readonly PermitFieldKey[],
+): Promise<Buffer> {
+  const selectedFields = fieldKeys
+    ? PERMIT_FIELD_LIST.filter((field) => fieldKeys.includes(field.key as PermitFieldKey))
+    : PERMIT_FIELD_LIST;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'WMS Tracking';
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(SHEET_NAME);
-  const lists = addListsSheet(workbook);
-  const lastColumn = PERMIT_FIELD_LIST.length + 1;
+  const lists = addListsSheet(workbook, selectedFields);
+  const lastColumn = selectedFields.length + 1;
 
   // Title
   sheet.mergeCells(TITLE_ROW, 1, TITLE_ROW, lastColumn);
@@ -73,9 +96,10 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   sectionRow.height = 24;
   let firstFieldIndex = 0;
   for (const section of FORM_SECTIONS) {
-    const sectionFields = PERMIT_FIELD_LIST.filter((field) => field.section === section.id);
+    const sectionFields = selectedFields.filter((field) => field.section === section.id);
     if (!sectionFields.length) continue;
-    const firstColumn = firstFieldIndex === 0 ? 1 : firstFieldIndex + 2;
+    const firstColumn =
+      firstFieldIndex === 0 ? (section.id === 'planning' ? 1 : 2) : firstFieldIndex + 2;
     const lastColumnInSection = firstFieldIndex + sectionFields.length + 1;
     for (let column = firstColumn; column <= lastColumnInSection; column += 1) {
       const cell = sectionRow.getCell(column);
@@ -91,7 +115,7 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   }
 
   // Header
-  const headers = [SR_NO_HEADER, ...PERMIT_FIELD_LIST.map((field) => field.header)];
+  const headers = [SR_NO_HEADER, ...selectedFields.map((field) => field.header)];
   const headerRow = sheet.getRow(HEADER_ROW);
   headers.forEach((header, index) => {
     const cell = headerRow.getCell(index + 1);
@@ -104,20 +128,40 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
   headerRow.height = 42;
 
   sheet.getColumn(1).width = 8;
-  PERMIT_FIELD_LIST.forEach((field, index) => {
+  selectedFields.forEach((field, index) => {
     sheet.getColumn(index + 2).width = field.width;
   });
+  const startDateIndex = selectedFields.findIndex((field) => field.key === 'planValidStartDate');
+  const endDateIndex = selectedFields.findIndex((field) => field.key === 'planValidEndDate');
+  const validityIndex = selectedFields.findIndex((field) => field.key === 'ptwValidity');
+  const hasValidityColumn = validityIndex >= 0;
+  const startDateColumn = startDateIndex >= 0 ? sheet.getColumn(startDateIndex + 2).letter : '';
+  const endDateColumn = endDateIndex >= 0 ? sheet.getColumn(endDateIndex + 2).letter : '';
 
   // Data rows
   permits.forEach((permit, rowIndex) => {
     const row = sheet.getRow(FIRST_DATA_ROW + rowIndex);
     row.getCell(1).value = permit.srNo;
     let certificateText = '';
-    PERMIT_FIELD_LIST.forEach((field, index) => {
+    selectedFields.forEach((field, index) => {
+      if (field.key === 'ptwValidity' && hasValidityColumn) {
+        const rowNumber = FIRST_DATA_ROW + rowIndex;
+        const startDate = startDateColumn
+          ? `${startDateColumn}${rowNumber}`
+          : excelDateExpression(permit.planValidStartDate);
+        const endDate = endDateColumn
+          ? `${endDateColumn}${rowNumber}`
+          : excelDateExpression(permit.planValidEndDate);
+        row.getCell(index + 2).value = {
+          formula: ptwValidityFormula(startDate, endDate),
+          result: formatPlanValidity(permit.planValidStartDate, permit.planValidEndDate),
+        };
+        return;
+      }
       const raw =
         field.fixedValue ??
         (field.type === 'computed'
-          ? formatPlanValidity(permit.planValidEndDate)
+          ? formatPlanValidity(permit.planValidStartDate, permit.planValidEndDate)
           : (permit[field.key as keyof PermitDTO] as string | string[] | undefined));
       if (!raw) return;
       const cell = row.getCell(index + 2);
@@ -133,11 +177,11 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
         cell.value = Array.isArray(raw) ? raw.join('; ') : raw;
       }
     });
-    const certificateFieldIndex = PERMIT_FIELD_LIST.findIndex(
+    const certificateFieldIndex = selectedFields.findIndex(
       (field) => field.key === 'certificateType',
     );
     if (certificateFieldIndex >= 0 && certificateText) {
-      const width = PERMIT_FIELD_LIST[certificateFieldIndex]?.width ?? 36;
+      const width = selectedFields[certificateFieldIndex]?.width ?? 36;
       row.height = Math.max(32, Math.ceil(certificateText.length / width) * 16 + 4);
     }
   });
@@ -152,8 +196,19 @@ export async function buildPermitWorkbook(permits: PermitDTO[]): Promise<Buffer>
       cell.border = BORDER;
       cell.alignment = { vertical: 'top', wrapText: true, horizontal: c === 1 ? 'center' : 'left' };
 
-      const field = c > 1 ? PERMIT_FIELD_LIST[c - 2] : undefined;
+      const field = c > 1 ? selectedFields[c - 2] : undefined;
       if (!field) continue;
+      if (
+        field.key === 'ptwValidity' &&
+        startDateColumn &&
+        endDateColumn &&
+        (cell.value === null || cell.value === undefined)
+      ) {
+        cell.value = {
+          formula: ptwValidityFormula(`${startDateColumn}${r}`, `${endDateColumn}${r}`),
+          result: '',
+        };
+      }
       if (field.type === 'date') cell.numFmt = DATE_FORMAT;
       if (
         (field.type === 'select' || field.type === 'radio' || field.type === 'multiselect') &&

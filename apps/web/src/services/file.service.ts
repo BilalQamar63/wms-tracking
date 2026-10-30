@@ -7,6 +7,7 @@ import type {
   ImportResultDTO,
   Paginated,
   SessionUser,
+  PermitFieldKey,
 } from '@wms/shared';
 import { ymdToUtcDate } from '@wms/shared';
 import type { FilterQuery } from 'mongoose';
@@ -186,9 +187,11 @@ export async function commitPermitFile(
 export async function exportPermitFile(
   filters: PermitFilters,
   user: SessionUser,
+  fieldKeys?: readonly PermitFieldKey[],
+  ptwTypes?: readonly string[],
 ): Promise<{ buffer: Buffer; fileName: string }> {
-  const permits = await findPermitsForExport(filters, filters.batchId);
-  const buffer = await buildPermitWorkbook(permits);
+  const permits = await findPermitsForExport(filters, filters.batchId, ptwTypes);
+  const buffer = await buildPermitWorkbook(permits, fieldKeys);
   const fileName = `PTW-Register_${timestampForFileName()}.xlsx`;
 
   const record = await FileRecordModel.create({

@@ -1,11 +1,13 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import {
   FORM_SECTIONS,
   PERMIT_FIELD_LIST,
   formatDisplayDate,
   type FormSection,
+  type PermitFieldKey,
   type PermitDTO,
 } from '@wms/shared';
 import { Button } from '@/components/ui/button';
@@ -33,29 +35,59 @@ interface Props {
   canManage: boolean;
   onEdit: (permit: PermitDTO) => void;
   onDelete: (permit: PermitDTO) => void;
+  visibleFields: readonly PermitFieldKey[];
+  selectedField: PermitFieldKey | null;
+  navigationVersion: number;
 }
 
 function renderCell(permit: PermitDTO, key: string, type: string) {
   const value = permit[key as keyof PermitDTO] as string | string[] | undefined;
   if (key === 'status')
     return <StatusBadge status={typeof value === 'string' ? value : undefined} />;
-  if (key === 'ptwValidity') return <PlanCountdown endDate={permit.planValidEndDate} />;
+  if (key === 'ptwValidity')
+    return (
+      <PlanCountdown startDate={permit.planValidStartDate} endDate={permit.planValidEndDate} />
+    );
   if (!value) return <span className="text-slate-300">—</span>;
   if (type === 'date') return formatDisplayDate(value as string);
   return Array.isArray(value) ? value.join(', ') : value;
 }
 
-export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
+export function PermitTable({
+  permits,
+  canManage,
+  onEdit,
+  onDelete,
+  visibleFields,
+  selectedField,
+  navigationVersion,
+}: Props) {
+  const tableContainer = useRef<HTMLDivElement>(null);
+  const columns = COLUMNS.filter((column) => visibleFields.includes(column.key as PermitFieldKey));
   const sectionColumns = FORM_SECTIONS.map((section) => ({
     ...section,
-    columns: COLUMNS.filter((column) => column.section === section.id),
+    columns: columns.filter((column) => column.section === section.id),
   }));
   const planningColumns = sectionColumns[0]?.columns.length ?? 0;
   const validityColumns = sectionColumns[1]?.columns.length ?? 0;
   const closureColumns = sectionColumns[2]?.columns.length ?? 0;
 
+  useEffect(() => {
+    if (!selectedField) return;
+    const container = tableContainer.current;
+    const target = container?.querySelector<HTMLElement>(
+      `th[data-permit-column="${selectedField}"]`,
+    );
+    if (!container || !target) return;
+    const targetLeft =
+      target.getBoundingClientRect().left -
+      container.getBoundingClientRect().left +
+      container.scrollLeft;
+    container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+  }, [selectedField, visibleFields, navigationVersion]);
+
   return (
-    <div className="overflow-x-auto">
+    <div ref={tableContainer} className="overflow-x-auto">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
         <thead className="text-xs font-semibold uppercase tracking-wide">
           <tr>
@@ -65,25 +97,30 @@ export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
             >
               {FORM_SECTIONS[0]?.title}
             </th>
-            <th
-              colSpan={validityColumns}
-              className={`border-b border-amber-100 px-4 py-2 text-left ${SECTION_STYLES.validity.header}`}
-            >
-              {FORM_SECTIONS[1]?.title}
-            </th>
-            <th
-              colSpan={closureColumns + (canManage ? 1 : 0)}
-              className={`border-b border-emerald-100 px-4 py-2 text-left ${SECTION_STYLES.closure.header}`}
-            >
-              {FORM_SECTIONS[2]?.title}
-            </th>
+            {validityColumns > 0 && (
+              <th
+                colSpan={validityColumns}
+                className={`border-b border-amber-100 px-4 py-2 text-left ${SECTION_STYLES.validity.header}`}
+              >
+                {FORM_SECTIONS[1]?.title}
+              </th>
+            )}
+            {(closureColumns > 0 || canManage) && (
+              <th
+                colSpan={closureColumns + (canManage ? 1 : 0)}
+                className={`border-b border-emerald-100 px-4 py-2 text-left ${SECTION_STYLES.closure.header}`}
+              >
+                {FORM_SECTIONS[2]?.title}
+              </th>
+            )}
           </tr>
           <tr className="bg-slate-50 text-left text-slate-500">
             <th className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES.planning.cell}`}>Sr No</th>
-            {COLUMNS.map((column) => (
+            {columns.map((column) => (
               <th
                 key={column.key}
-                className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES[column.section].cell}`}
+                data-permit-column={column.key}
+                className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
               >
                 {column.header}
               </th>
@@ -101,10 +138,11 @@ export function PermitTable({ permits, canManage, onEdit, onDelete }: Props) {
               >
                 {permit.srNo}
               </td>
-              {COLUMNS.map((column) => (
+              {columns.map((column) => (
                 <td
                   key={column.key}
-                  className={`max-w-[16rem] px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell}`}
+                  data-permit-column={column.key}
+                  className={`max-w-[16rem] px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
                 >
                   {renderCell(permit, column.key, column.type)}
                 </td>

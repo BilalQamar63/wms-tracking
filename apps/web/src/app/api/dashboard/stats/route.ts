@@ -1,11 +1,13 @@
 import { requireUser } from '@/lib/auth/session';
 import { ok, route } from '@/lib/http/response';
+import { permitFiltersSchema } from '@wms/shared';
 import { getPermitDashboardStats } from '@/services/dashboard.service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const GET = route(async () => {
+export const GET = route(async (req) => {
   await requireUser();
-  return ok(await getPermitDashboardStats());
+  const filters = permitFiltersSchema.parse(Object.fromEntries(req.nextUrl.searchParams.entries()));
+  return ok(await getPermitDashboardStats(filters));
 });

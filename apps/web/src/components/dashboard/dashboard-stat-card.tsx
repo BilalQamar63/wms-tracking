@@ -14,21 +14,20 @@ interface Props {
   value?: number;
   icon: LucideIcon;
   tone: keyof typeof TONES;
-  active: boolean;
-  onClick: () => void;
+  active?: boolean;
+  onClick?: () => void;
 }
 
-export function DashboardStatCard({ label, value, icon: Icon, tone, active, onClick }: Props) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
-        active ? 'border-brand-300 ring-2 ring-brand-100' : 'border-slate-200',
-      )}
-    >
+export function DashboardStatCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  active = false,
+  onClick,
+}: Props) {
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-medium text-slate-600">{label}</span>
         <span
@@ -40,6 +39,28 @@ export function DashboardStatCard({ label, value, icon: Icon, tone, active, onCl
       <p className="mt-4 text-3xl font-semibold tracking-tight text-slate-900">
         {value === undefined ? '—' : value.toLocaleString()}
       </p>
+    </>
+  );
+
+  if (!onClick) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+        active ? 'border-brand-300 ring-2 ring-brand-100' : 'border-slate-200',
+      )}
+    >
+      {content}
     </button>
   );
 }

@@ -156,17 +156,21 @@ export const PERMIT_FIELDS = [
   {
     key: 'workLocation',
     header: 'Work Location',
-    type: 'text',
+    type: 'textarea',
     section: 'planning',
     width: 24,
+    maxLength: 1000,
+    fullWidth: true,
     inTable: true,
   },
   {
     key: 'equipmentTagNo',
     header: 'Equipment Tag No',
-    type: 'text',
+    type: 'textarea',
     section: 'planning',
     width: 22,
+    maxLength: 1000,
+    fullWidth: true,
     inTable: true,
   },
   {

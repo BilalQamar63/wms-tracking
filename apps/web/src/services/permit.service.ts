@@ -110,11 +110,29 @@ function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<Perm
   if (filters.department) filter.department = filters.department;
   if (filters.discipline) filter.discipline = filters.discipline;
   if (filters.plantDivision) filter.plantDivision = filters.plantDivision;
+  if (filters.company) filter.company = filters.company;
+  if (filters.subContractor) filter.subContractor = filters.subContractor;
+  if (filters.ptwType) filter.newPtwType = filters.ptwType;
+
+  if (filters.fieldKey && filters.fieldValue) {
+    const field = PERMIT_FIELD_LIST.find((item) => item.key === filters.fieldKey);
+    if (field?.type === 'date') {
+      const start = ymdToUtcDate(filters.fieldValue);
+      filter[filters.fieldKey] = {
+        $gte: start,
+        $lt: new Date(start.getTime() + 86_400_000),
+      };
+    } else if (field && field.type !== 'computed') {
+      filter[filters.fieldKey] = new RegExp(escapeRegex(filters.fieldValue), 'i');
+    }
+  }
 
   if (filters.dateFrom || filters.dateTo) {
     filter.closedDate = {
       ...(filters.dateFrom ? { $gte: ymdToUtcDate(filters.dateFrom) } : {}),
-      ...(filters.dateTo ? { $lte: ymdToUtcDate(filters.dateTo) } : {}),
+      ...(filters.dateTo
+        ? { $lt: new Date(ymdToUtcDate(filters.dateTo).getTime() + 86_400_000) }
+        : {}),
     };
   }
   return filter;
@@ -163,11 +181,14 @@ export async function listPermits(query: PermitQuery): Promise<Paginated<PermitD
 export async function findPermitsForExport(
   filters: PermitFilters,
   batchId?: string,
+  ptwTypes?: readonly string[],
 ): Promise<PermitDTO[]> {
   await connectDb();
-  const docs = await PermitModel.find(buildFilter(filters, batchId))
-    .sort({ srNo: 1 })
-    .lean<PermitDoc[]>();
+  const filter = buildFilter(ptwTypes?.length ? { ...filters, ptwType: '' } : filters, batchId);
+  const query = ptwTypes?.length
+    ? ({ $and: [filter, { newPtwType: { $in: [...ptwTypes] } }] } as FilterQuery<PermitDoc>)
+    : filter;
+  const docs = await PermitModel.find(query).sort({ srNo: 1 }).lean<PermitDoc[]>();
   return docs.map(toPermitDTO);
 }
 
@@ -242,6 +263,12 @@ export async function deletePermit(id: string): Promise<void> {
   await connectDb();
   const result = await PermitModel.findByIdAndDelete(id).select('_id').lean();
   if (!result) throw notFound('Permit');
+}
+
+export async function deleteCurrentRegister(): Promise<number> {
+  await connectDb();
+  const result = await PermitModel.deleteMany({ importBatchId: { $exists: false } });
+  return result.deletedCount;
 }
 
 function comparableValue(

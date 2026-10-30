@@ -40,6 +40,7 @@ export function toPermitDTO(doc: PermitDoc): PermitDTO {
     }
     if (field.type === 'computed') {
       (dto as unknown as Record<string, unknown>)[field.key] = formatPlanValidity(
+        doc.planValidStartDate,
         doc.planValidEndDate,
       );
       continue;

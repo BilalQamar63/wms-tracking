@@ -8,6 +8,17 @@ export const PASSWORD_ROUNDS = 12;
 
 export const hashPassword = (plain: string): Promise<string> => bcrypt.hash(plain, PASSWORD_ROUNDS);
 
+export async function verifyAdminCredentials({ email, password }: LoginInput): Promise<boolean> {
+  await connectDb();
+  const user = await UserModel.findOne({
+    email: email.trim().toLowerCase(),
+    role: 'admin',
+    isDeleted: false,
+    isActive: true,
+  }).select('+passwordHash');
+  return user ? bcrypt.compare(password, user.passwordHash) : false;
+}
+
 export async function authenticate({ email, password }: LoginInput): Promise<SessionUser> {
   await connectDb();
   const user = await UserModel.findOne({ email, isDeleted: false, isActive: true }).select(

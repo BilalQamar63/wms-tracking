@@ -80,22 +80,25 @@ export function getTodayYmd(now = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** Formats plan validity for tables and exports, without a future-start countdown. */
-export function formatPlanValidity(endDate?: string | Date | null, now = new Date()): string {
-  const ymd = toDateInputValue(endDate);
-  if (!ymd) return '';
-  const days = getPlanDaysRemaining(ymd, now);
+/** Formats the inclusive duration between the planned start and end dates. */
+export function formatPlanValidity(
+  startDate?: string | Date | null,
+  endDate?: string | Date | null,
+): string {
+  const start = toDateInputValue(startDate);
+  const end = toDateInputValue(endDate);
+  if (!start || !end) return '';
+  const days = getPlanDurationDays(start, end);
   if (days === null) return '';
-  if (days === 0) return 'Expired';
   return `${days} ${days === 1 ? 'day' : 'days'} left`;
 }
 
-/** Formats dates as `DD-MM-YYYY` (e.g. 24-03-2026). */
+/** Formats dates as `DD-MMM-YYYY` (e.g. 24-Mar-2026). */
 export function formatDisplayDate(value?: string | Date | null): string {
   const ymd = toDateInputValue(value);
   if (!ymd) return '';
   const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
-  return `${pad(d)}-${pad(m)}-${y}`;
+  return `${pad(d)}-${MONTH_LABELS[m - 1]}-${y}`;
 }
 
 /**

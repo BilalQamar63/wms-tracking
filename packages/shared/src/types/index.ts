@@ -132,7 +132,8 @@ export interface PermitRegisterSummaryDTO {
 }
 
 export interface CompanyPermitStatsDTO {
-  company: string;
+  mainContractor: string;
+  subContractor: string;
   total: number;
   active: number;
   closed: number;
@@ -140,10 +141,11 @@ export interface CompanyPermitStatsDTO {
 
 export interface PermitDashboardStatsDTO {
   total: number;
-  companies: number;
+  mainContractors: number;
+  subContractors: number;
   active: number;
   closed: number;
-  byCompany: CompanyPermitStatsDTO[];
+  byContractor: CompanyPermitStatsDTO[];
 }
 
 export interface ApiSuccess<T> {
