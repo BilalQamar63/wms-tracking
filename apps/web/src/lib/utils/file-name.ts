@@ -18,12 +18,14 @@ export function timestampForFileName(date = new Date()): string {
 
 /** Removes path separators / unsafe characters from user supplied file names. */
 export function sanitizeFileName(name: string): string {
-  return name
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[^a-zA-Z0-9-_ ]+/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 80) || 'file';
+  return (
+    name
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-zA-Z0-9-_ ]+/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .slice(0, 80) || 'file'
+  );
 }
 
 export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';

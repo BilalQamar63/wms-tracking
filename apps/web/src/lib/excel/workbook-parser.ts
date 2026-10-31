@@ -3,6 +3,7 @@ import {
   CERTIFICATE_TYPES,
   OPTION_ALIASES,
   PERMIT_FIELD_LIST,
+  PTWC_APPROVER_NAME,
   SR_NO_HEADER,
   addDaysToYmd,
   parseFlexibleDate,
@@ -29,13 +30,20 @@ export interface ParseResult {
 const normalizeHeader = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 const HEADER_LOOKUP = new Map<string, (typeof PERMIT_FIELD_LIST)[number]>(
-  PERMIT_FIELD_LIST.map((field) => [normalizeHeader(field.header), field]),
+  PERMIT_FIELD_LIST.filter((field) => field.exportToExcel !== false).map((field) => [
+    normalizeHeader(field.header),
+    field,
+  ]),
 );
 const CERTIFICATE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'certificateType');
 if (CERTIFICATE_FIELD) {
   CERTIFICATE_TYPES.forEach((_, index) => {
     HEADER_LOOKUP.set(normalizeHeader(`Certificate Type ${index + 1}`), CERTIFICATE_FIELD);
   });
+}
+const PTWC_STATUS_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'ptwcStatus');
+if (PTWC_STATUS_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Approved by PTWC'), PTWC_STATUS_FIELD);
 }
 const COMPANY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'company');
 if (COMPANY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Company'), COMPANY_FIELD);
@@ -103,6 +111,15 @@ function canonicalOption(raw: string, options: readonly string[]): string {
   if (normalizedMatch) return normalizedMatch;
   const alias = OPTION_ALIASES[lower];
   return alias && options.includes(alias) ? alias : raw;
+}
+
+function canonicalPtwcStatus(raw: string, options: readonly string[]): string {
+  const status = /^(approved|rejected)(?:\s+by\b.*)?$/i.exec(raw.trim())?.[1];
+  if (status) return canonicalOption(status, options);
+  if (raw.trim().toLowerCase() === PTWC_APPROVER_NAME.toLowerCase()) {
+    return canonicalOption('Approved', options);
+  }
+  return canonicalOption(raw, options);
 }
 
 function pickWorksheet(workbook: ExcelJS.Workbook): ExcelJS.Worksheet {
@@ -180,7 +197,10 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
           ...new Set([...(Array.isArray(existing) ? existing : []), ...values]),
         ];
       } else if ((field.type === 'select' || field.type === 'radio') && field.options) {
-        const normalized = canonicalOption(text, field.options);
+        const normalized =
+          field.key === 'ptwcStatus'
+            ? canonicalPtwcStatus(text, field.options)
+            : canonicalOption(text, field.options);
         candidate[field.key] =
           field.key === 'company' && field.defaultValue && !field.options.includes(normalized)
             ? field.defaultValue
@@ -204,7 +224,7 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
       typeof candidate.planValidStartDate === 'string' &&
       typeof candidate.planValidEndDate !== 'string'
     ) {
-      candidate.planValidEndDate = addDaysToYmd(candidate.planValidStartDate, 13);
+      candidate.planValidEndDate = addDaysToYmd(candidate.planValidStartDate, 14);
     }
 
     if (totalRows > MAX_IMPORT_ROWS) {

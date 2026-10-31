@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
 type Params = { id: string };
 
 export const GET = route<Params>(async (_req, { params }) => {
-  await requireUser();
-  return ok(await getPermit(params.id));
+  const user = await requireUser();
+  return ok(await getPermit(params.id, user));
 });
 
 /** Full replacement – fields that are omitted / empty are cleared. */

@@ -22,7 +22,7 @@ export async function verifyAdminCredentials({ email, password }: LoginInput): P
 export async function authenticate({ email, password }: LoginInput): Promise<SessionUser> {
   await connectDb();
   const user = await UserModel.findOne({ email, isDeleted: false, isActive: true }).select(
-    '+passwordHash name email role',
+    '+passwordHash name email role assignedSubContractor',
   );
 
   // Same message for unknown user / wrong password – avoids account enumeration.
@@ -31,5 +31,11 @@ export async function authenticate({ email, password }: LoginInput): Promise<Ses
 
   user.lastLoginAt = new Date();
   await user.save();
-  return { id: String(user._id), name: user.name, email: user.email, role: user.role };
+  return {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    assignedSubContractor: user.assignedSubContractor,
+  };
 }

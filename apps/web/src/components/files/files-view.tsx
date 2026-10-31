@@ -20,6 +20,7 @@ const TABS: ReadonlyArray<{ value: FileKind | ''; label: string }> = [
   { value: '', label: 'All' },
   { value: 'import', label: 'Imports' },
   { value: 'export', label: 'Exports' },
+  { value: 'add', label: 'Permit additions' },
 ];
 
 const dayLabel = (iso: string) => formatDisplayDate(iso);
@@ -61,7 +62,7 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
     <>
       <PageHeader
         title="Import / Export History"
-        description="Import snapshots and export activity, grouped by date and recorded in the database."
+        description="Imports, exports, and manual permit additions, including who performed them and the associated subcontractors."
       />
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -142,13 +143,50 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
                             {timeLabel(file.createdAt)}
                           </td>
                           <td className="px-4 py-3">
-                            <Badge tone={file.kind === 'import' ? 'blue' : 'green'}>
-                              {file.kind === 'import' ? 'Import' : 'Export'}
+                            <Badge
+                              tone={
+                                file.kind === 'import'
+                                  ? 'blue'
+                                  : file.kind === 'add'
+                                    ? 'purple'
+                                    : 'green'
+                              }
+                            >
+                              {file.kind === 'import'
+                                ? 'Import'
+                                : file.kind === 'add'
+                                  ? 'Permit added'
+                                  : 'Export'}
                             </Badge>
                           </td>
                           <td className="px-4 py-3">
                             <p className="font-medium text-slate-800">{file.originalName}</p>
-                            <p className="text-xs text-slate-400">{sizeLabel(file.bytes)}</p>
+                            {file.kind !== 'add' && (
+                              <p className="text-xs text-slate-400">{sizeLabel(file.bytes)}</p>
+                            )}
+                            {!!file.subContractors?.length && (
+                              <p className="text-xs text-slate-500">
+                                Sub contractor{file.subContractors.length === 1 ? '' : 's'}:{' '}
+                                {file.subContractors.join(', ')}
+                              </p>
+                            )}
+                            {!!file.importedPermits?.length && (
+                              <details className="mt-1 text-xs text-slate-500">
+                                <summary className="cursor-pointer hover:text-slate-800">
+                                  View {file.importedPermits.length} added permit
+                                  {file.importedPermits.length === 1 ? '' : 's'}
+                                </summary>
+                                <ul className="mt-1 list-inside list-disc space-y-0.5">
+                                  {file.importedPermits.map((permit) => (
+                                    <li key={`${permit.srNo}-${permit.newPtwNumber ?? ''}`}>
+                                      Sr No {permit.srNo}
+                                      {permit.newPtwNumber ? ` · PTW ${permit.newPtwNumber}` : ''}
+                                      {permit.subContractor ? ` · ${permit.subContractor}` : ''}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            )}
                           </td>
                           <td className="px-4 py-3 tabular-nums">{file.rowCount}</td>
                           <td className="px-4 py-3 text-xs text-slate-600">
@@ -162,6 +200,8 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
                                   </span>
                                 )}
                               </span>
+                            ) : file.kind === 'add' ? (
+                              <span>1 permit added</span>
                             ) : (
                               <span className="text-slate-400">—</span>
                             )}
@@ -173,6 +213,11 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
                               >
                                 {file.createdBy.name}
                                 {file.createdBy.isDeleted && ' (deleted)'}
+                                {file.createdBy.assignedSubContractor && (
+                                  <span className="block text-xs text-slate-500">
+                                    {file.createdBy.assignedSubContractor}
+                                  </span>
+                                )}
                               </span>
                             ) : (
                               '—'
@@ -207,7 +252,7 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
           </>
         ) : (
           <EmptyState title="No activity yet">
-            Import snapshots and export activity will appear here.
+            Imports, exports, and manual permit additions will appear here.
           </EmptyState>
         )}
       </section>

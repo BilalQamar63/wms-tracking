@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Building2, ClipboardList, Clock3, Users, XCircle } from 'lucide-react';
+import { Building2, ClipboardList, Clock3, Divide, Users, XCircle } from 'lucide-react';
 import useSWR from 'swr';
 import { PTW_TYPES, type PermitDashboardStatsDTO, type PermitFieldKey } from '@wms/shared';
 import { Button } from '@/components/ui/button';
@@ -29,7 +29,7 @@ const EXPORT_STATUS_OPTIONS = [
   { value: 'overdue', label: 'Overdue' },
 ] as const;
 
-export function DashboardView() {
+export function DashboardView({ canExport }: { canExport: boolean }) {
   const toast = useToast();
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [statusFilter, setStatusFilter] = useState<ContractorStatusFilter>('all');
@@ -97,7 +97,7 @@ export function DashboardView() {
           <EmptyState title="Could not load dashboard">{error.message}</EmptyState>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="grid gap-4 grid-cols-2">
               <DashboardStatCard
                 label="Main Contractors"
                 value={data?.mainContractors}
@@ -110,8 +110,12 @@ export function DashboardView() {
                 icon={Users}
                 tone="purple"
               />
+            </div>
+            <hr />
+            <h1 className="text-lg font-semibold text-slate-900">Permit status overview</h1>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <DashboardStatCard
-                label="Total permits"
+                label="Total"
                 value={data?.total}
                 icon={ClipboardList}
                 tone="slate"
@@ -125,20 +129,20 @@ export function DashboardView() {
                 onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
               />
               <DashboardStatCard
-                label="Closed"
-                value={data?.closed}
-                icon={XCircle}
-                tone="green"
-                active={statusFilter === 'closed'}
-                onClick={() => setStatusFilter(statusFilter === 'closed' ? 'all' : 'closed')}
-              />
-              <DashboardStatCard
                 label="Overdue"
                 value={data?.overdue}
                 icon={XCircle}
                 tone="red"
                 active={statusFilter === 'overdue'}
                 onClick={() => setStatusFilter(statusFilter === 'overdue' ? 'all' : 'overdue')}
+              />
+              <DashboardStatCard
+                label="Closed"
+                value={data?.closed}
+                icon={XCircle}
+                tone="green"
+                active={statusFilter === 'closed'}
+                onClick={() => setStatusFilter(statusFilter === 'closed' ? 'all' : 'closed')}
               />
             </div>
 
@@ -204,6 +208,7 @@ export function DashboardView() {
               ) : data ? (
                 <ContractorStatsTable
                   contractors={contractors}
+                  canExport={canExport}
                   onExport={(mainContractor, subContractor) => {
                     setSelectedCompany({ mainContractor, subContractor });
                     setExportStatus('all');
@@ -221,112 +226,114 @@ export function DashboardView() {
           </>
         )}
       </div>
-      <Modal
-        open={selectedCompany !== null}
-        title="Export contractor permits"
-        description={
-          selectedCompany
-            ? `${selectedCompany.mainContractor} · ${selectedCompany.subContractor}`
-            : undefined
-        }
-        onClose={() => {
-          if (!exportingKey) setSelectedCompany(null);
-        }}
-        size="xl"
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              disabled={exportingKey !== null}
-              onClick={() => setSelectedCompany(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="secondary"
-              loading={exportingKey !== null}
-              disabled={!selectedCompany || exportingKey !== null}
-              onClick={() =>
-                selectedCompany &&
-                exportContractor(selectedCompany, 'all', ALL_FIELD_KEYS, [...PTW_TYPES])
-              }
-            >
-              Download full Excel
-            </Button>
-            <Button
-              loading={exportingKey !== null}
-              disabled={
-                !selectedCompany ||
-                exportingKey !== null ||
-                selectedFields.length === 0 ||
-                selectedPtwTypes.length === 0
-              }
-              onClick={() => selectedCompany && exportContractor(selectedCompany)}
-            >
-              Download selected
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="space-y-4">
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold text-slate-800">Permit status</span>
-              <Select
-                options={EXPORT_STATUS_OPTIONS}
-                value={exportStatus}
-                onChange={(event) => setExportStatus(event.target.value as CompanyExportStatus)}
-              />
-            </label>
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold text-slate-800">Excel fields</h3>
-              <ExcelFieldPicker
-                selectedFields={selectedFields}
-                onChange={setSelectedFields}
-                expanded
-              />
+      {canExport && (
+        <Modal
+          open={selectedCompany !== null}
+          title="Export contractor permits"
+          description={
+            selectedCompany
+              ? `${selectedCompany.mainContractor} · ${selectedCompany.subContractor}`
+              : undefined
+          }
+          onClose={() => {
+            if (!exportingKey) setSelectedCompany(null);
+          }}
+          size="xl"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                disabled={exportingKey !== null}
+                onClick={() => setSelectedCompany(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="secondary"
+                loading={exportingKey !== null}
+                disabled={!selectedCompany || exportingKey !== null}
+                onClick={() =>
+                  selectedCompany &&
+                  exportContractor(selectedCompany, 'all', ALL_FIELD_KEYS, [...PTW_TYPES])
+                }
+              >
+                Download full Excel
+              </Button>
+              <Button
+                loading={exportingKey !== null}
+                disabled={
+                  !selectedCompany ||
+                  exportingKey !== null ||
+                  selectedFields.length === 0 ||
+                  selectedPtwTypes.length === 0
+                }
+                onClick={() => selectedCompany && exportContractor(selectedCompany)}
+              >
+                Download selected
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="space-y-4">
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-slate-800">Permit status</span>
+                <Select
+                  options={EXPORT_STATUS_OPTIONS}
+                  value={exportStatus}
+                  onChange={(event) => setExportStatus(event.target.value as CompanyExportStatus)}
+                />
+              </label>
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-slate-800">Excel fields</h3>
+                <ExcelFieldPicker
+                  selectedFields={selectedFields}
+                  onChange={setSelectedFields}
+                  expanded
+                />
+              </div>
             </div>
+            <fieldset className="rounded-lg border border-slate-200 p-3">
+              <legend className="px-1 text-sm font-semibold text-slate-800">PTW types</legend>
+              <div className="mb-3 flex justify-between gap-2">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-brand-700 hover:text-brand-900"
+                  onClick={() => setSelectedPtwTypes([...PTW_TYPES])}
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-brand-700 hover:text-brand-900"
+                  onClick={() => setSelectedPtwTypes([])}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="space-y-3">
+                {PTW_TYPES.map((ptwType) => (
+                  <label key={ptwType} className="flex items-start gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedPtwTypes.includes(ptwType)}
+                      onChange={() =>
+                        setSelectedPtwTypes((current) =>
+                          current.includes(ptwType)
+                            ? current.filter((value) => value !== ptwType)
+                            : [...current, ptwType],
+                        )
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500"
+                    />
+                    <span>{ptwType}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
-          <fieldset className="rounded-lg border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-semibold text-slate-800">PTW types</legend>
-            <div className="mb-3 flex justify-between gap-2">
-              <button
-                type="button"
-                className="text-xs font-medium text-brand-700 hover:text-brand-900"
-                onClick={() => setSelectedPtwTypes([...PTW_TYPES])}
-              >
-                Select all
-              </button>
-              <button
-                type="button"
-                className="text-xs font-medium text-brand-700 hover:text-brand-900"
-                onClick={() => setSelectedPtwTypes([])}
-              >
-                Clear
-              </button>
-            </div>
-            <div className="space-y-3">
-              {PTW_TYPES.map((ptwType) => (
-                <label key={ptwType} className="flex items-start gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={selectedPtwTypes.includes(ptwType)}
-                    onChange={() =>
-                      setSelectedPtwTypes((current) =>
-                        current.includes(ptwType)
-                          ? current.filter((value) => value !== ptwType)
-                          : [...current, ptwType],
-                      )
-                    }
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500"
-                  />
-                  <span>{ptwType}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        </div>
-      </Modal>
+        </Modal>
+      )}
     </>
   );
 }

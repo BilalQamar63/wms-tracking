@@ -1,5 +1,5 @@
 import { Schema, model, models, type Model, type Types } from 'mongoose';
-import { USER_ROLES, type Role } from '@wms/shared';
+import { SUB_CONTRACTORS, USER_ROLES, type Role } from '@wms/shared';
 
 export interface UserDoc {
   _id: Types.ObjectId;
@@ -7,6 +7,7 @@ export interface UserDoc {
   email: string;
   passwordHash: string;
   role: Role;
+  assignedSubContractor?: string;
   isActive: boolean;
   /** Soft-delete flag – records created by the user keep a valid reference. */
   isDeleted: boolean;
@@ -25,6 +26,7 @@ const userSchema = new Schema<UserDoc>(
     email: { type: String, required: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: USER_ROLES, default: 'user', required: true },
+    assignedSubContractor: { type: String, trim: true, enum: SUB_CONTRACTORS },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,

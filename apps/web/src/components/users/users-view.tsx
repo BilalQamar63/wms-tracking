@@ -40,6 +40,7 @@ export function UsersView({ currentUser }: { currentUser: SessionUser }) {
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Sub contractor</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Permits</th>
                 <th className="px-4 py-3">Last login</th>
@@ -56,6 +57,7 @@ export function UsersView({ currentUser }: { currentUser: SessionUser }) {
                     <p className="text-xs text-slate-500">{user.email}</p>
                   </td>
                   <td className="px-4 py-3"><Badge tone={user.role === 'admin' ? 'purple' : 'slate'}>{user.role}</Badge></td>
+                  <td className="px-4 py-3">{user.assignedSubContractor ?? '—'}</td>
                   <td className="px-4 py-3"><Badge tone={user.isActive ? 'green' : 'red'}>{user.isActive ? 'Active' : 'Inactive'}</Badge></td>
                   <td className="px-4 py-3 tabular-nums">{user.permitCount ?? 0}</td>
                   <td className="px-4 py-3 text-slate-500">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'Never'}</td>

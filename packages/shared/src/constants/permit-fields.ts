@@ -5,6 +5,7 @@ import {
   MAIN_CONTRACTORS,
   PLANT_DIVISIONS,
   PTW_STATUSES,
+  PTWC_STATUS_OPTIONS,
   PTW_TYPES,
   YES_NO,
   WORK_PLANNING_TYPES,
@@ -32,6 +33,8 @@ export interface PermitFieldDef {
   readonly fixedValue?: string;
   /** Shown as a column in the register table. */
   readonly inTable?: boolean;
+  /** Included in exported Excel workbooks unless explicitly disabled. */
+  readonly exportToExcel?: boolean;
   /** Spans the full width of the form grid. */
   readonly fullWidth?: boolean;
 }
@@ -262,12 +265,24 @@ export const PERMIT_FIELDS = [
     inTable: true,
   },
   {
-    key: 'approvedByPtwc',
-    header: 'Approved by PTWC',
-    type: 'text',
+    key: 'ptwcStatus',
+    header: 'PTWC Status',
+    type: 'radio',
     section: 'validity',
     width: 22,
+    options: PTWC_STATUS_OPTIONS,
     inTable: true,
+  },
+  {
+    key: 'ptwcStatusRemark',
+    header: 'PTWC Status Remark',
+    type: 'textarea',
+    section: 'validity',
+    width: 34,
+    maxLength: 1000,
+    fullWidth: true,
+    inTable: false,
+    exportToExcel: false,
   },
   {
     key: 'closedDate',

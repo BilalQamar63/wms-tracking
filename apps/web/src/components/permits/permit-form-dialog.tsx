@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  DEFAULT_PTWC_APPROVER,
   PERMIT_FIELD_LIST,
   permitInputSchema,
   toDateInputValue,
@@ -21,11 +20,15 @@ interface Props {
   open: boolean;
   permit: PermitDTO | null;
   importBatchId?: string | null;
+  assignedSubContractor?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function toFormValues(permit: PermitDTO | null): PermitInput {
+function toFormValues(
+  permit: PermitDTO | null,
+  assignedSubContractor?: string,
+): PermitInput {
   const values: Record<string, string | string[] | undefined> = {};
   for (const field of PERMIT_FIELD_LIST) {
     let raw =
@@ -50,12 +53,19 @@ function toFormValues(permit: PermitDTO | null): PermitInput {
             ? raw
             : '';
   }
-  if (!permit) values.approvedByPtwc = DEFAULT_PTWC_APPROVER;
+  if (!permit && assignedSubContractor) values.subContractor = assignedSubContractor;
   if (permit?.status === 'Not Start Yet') values.status = 'Not Closed';
   return values as PermitInput;
 }
 
-export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved }: Props) {
+export function PermitFormDialog({
+  open,
+  permit,
+  importBatchId,
+  assignedSubContractor,
+  onClose,
+  onSaved,
+}: Props) {
   const toast = useToast();
   const isEdit = !!permit;
 
@@ -68,12 +78,12 @@ export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved
     formState: { errors, isSubmitting },
   } = useForm<PermitInput>({
     resolver: zodResolver(permitInputSchema) as unknown as Resolver<PermitInput>,
-    defaultValues: toFormValues(permit),
+    defaultValues: toFormValues(permit, assignedSubContractor),
   });
 
   useEffect(() => {
-    if (open) reset(toFormValues(permit));
-  }, [open, permit, reset]);
+    if (open) reset(toFormValues(permit, assignedSubContractor));
+  }, [open, permit, assignedSubContractor, reset]);
 
   async function onSubmit(values: PermitInput) {
     try {
@@ -120,6 +130,7 @@ export function PermitFormDialog({ open, permit, importBatchId, onClose, onSaved
           register={register}
           setValue={setValue}
           errors={errors}
+          assignedSubContractor={assignedSubContractor}
         />
       </form>
     </Modal>

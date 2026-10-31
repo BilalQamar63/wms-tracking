@@ -11,11 +11,19 @@ import { apiFetch, downloadFromApi } from '@/lib/api-client';
 
 interface Props {
   open: boolean;
+  canUpdate: boolean;
+  assignedSubContractor?: string;
   onClose: () => void;
   onImported: () => void;
 }
 
-export function ImportDialog({ open, onClose, onImported }: Props) {
+export function ImportDialog({
+  open,
+  canUpdate,
+  assignedSubContractor,
+  onClose,
+  onImported,
+}: Props) {
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -116,7 +124,11 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
       onClose={close}
       size="lg"
       title="Import from Excel"
-      description="Upload an Excel register to compare it with the current register. Review each changed field before applying it; uploads are recorded in history without creating another register snapshot."
+      description={
+        canUpdate
+          ? 'Upload an Excel register to compare it with the current register. Review each changed field before applying it; uploads are recorded in history.'
+          : `Upload an Excel register to add new permits for ${assignedSubContractor}. Existing permits cannot be changed; uploads are recorded in admin history.`
+      }
       footer={
         result ? (
           <Button onClick={close}>Done</Button>
@@ -126,7 +138,12 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
               {preview ? 'Cancel' : 'Close'}
             </Button>
             <Button onClick={submit} disabled={!file} loading={busy}>
-              <Upload className="h-4 w-4" /> {preview ? 'Apply selected changes' : 'Review import'}
+              <Upload className="h-4 w-4" />{' '}
+              {preview
+                ? canUpdate
+                  ? 'Apply selected changes'
+                  : 'Add selected permits'
+                : 'Review import'}
             </Button>
           </>
         )
@@ -145,13 +162,13 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
                 {file ? (
                   <span className="font-medium text-slate-800">{file.name}</span>
                 ) : (
-                  <span>Click to choose an .xlsx file</span>
+                  <span>Click to choose an .xlsx or .xlsm file</span>
                 )}
               </button>
               <input
                 ref={inputRef}
                 type="file"
-                accept=".xlsx"
+                accept=".xlsx,.xlsm"
                 hidden
                 onChange={(event) => {
                   setFile(event.target.files?.[0] ?? null);
@@ -160,9 +177,18 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
               />
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3 text-xs text-slate-600">
                 <span>
-                  Rows with a matching <b>New PTW Number</b> are compared with the current register.
-                  New permits can be selected for addition. Missing or unrecognized Main Contractor
-                  values default to JV-TR/NMDC.
+                  {canUpdate ? (
+                    <>
+                      Rows with a matching <b>New PTW Number</b> are compared with the current
+                      register. New permits can be selected for addition. Missing or unrecognized
+                      Main Contractor values default to JV-TR/NMDC.
+                    </>
+                  ) : (
+                    <>
+                      Only rows with sub contractor <b>{assignedSubContractor}</b> can be added.
+                      Existing permits and other sub contractors are skipped.
+                    </>
+                  )}
                 </span>
                 <Button
                   variant="secondary"
@@ -301,8 +327,9 @@ export function ImportDialog({ open, onClose, onImported }: Props) {
                 </div>
               )}
               <p className="text-xs text-slate-500">
-                Select the fields to update. New PTW Number is the match key; upload changes go to
-                the current register only.
+                {canUpdate
+                  ? 'Select the fields to update. New PTW Number is the match key; upload changes go to the current register only.'
+                  : `Only new permits for ${assignedSubContractor} can be added. Existing permits are skipped.`}
               </p>
             </>
           )}

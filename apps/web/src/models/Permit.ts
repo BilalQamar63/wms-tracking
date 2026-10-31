@@ -11,6 +11,7 @@ type PermitFields = {
 };
 
 export interface PermitDoc extends PermitFields {
+  approvedByPtwc?: string;
   _id: Types.ObjectId;
   srNo: number;
   createdBy?: Types.ObjectId;
@@ -31,6 +32,7 @@ const fieldDefinition: SchemaDefinition = Object.fromEntries(
         : { type: String, trim: true, ...(field.options ? { enum: field.options } : {}) },
   ]),
 );
+fieldDefinition.approvedByPtwc = { type: String, trim: true };
 
 const permitSchema = new Schema<PermitDoc>(
   {

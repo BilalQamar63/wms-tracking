@@ -6,6 +6,6 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export const GET = route(async () => {
-  await requireUser();
-  return ok(await getCurrentRegisterSummary());
+  const user = await requireUser();
+  return ok(await getCurrentRegisterSummary(user));
 });

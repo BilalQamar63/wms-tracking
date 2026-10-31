@@ -35,11 +35,17 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 
   await connectDb();
   const user = await UserModel.findOne({ _id: payload.sub, isDeleted: false, isActive: true })
-    .select('name email role')
+    .select('name email role assignedSubContractor')
     .lean();
   if (!user) return null;
 
-  return { id: String(user._id), name: user.name, email: user.email, role: user.role };
+  return {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    assignedSubContractor: user.assignedSubContractor,
+  };
 });
 
 /** For route handlers: throws 401 when not signed in. */

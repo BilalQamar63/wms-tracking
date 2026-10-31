@@ -14,8 +14,11 @@ import {
   type PermitInput,
   type PermitQuery,
   type PermitRegisterSummaryDTO,
+  type SessionUser,
 } from '@wms/shared';
+import { assignedSubContractorFor } from '@/lib/auth/permissions';
 import { connectDb } from '@/lib/db/mongoose';
+import { getEnv } from '@/lib/env';
 import { badRequest, conflict, notFound } from '@/lib/http/errors';
 import { permitInputToPartialSet, permitInputToUpdate, toPermitDTO } from '@/lib/mappers';
 import { assertObjectId, escapeRegex } from '@/lib/utils/object-id';
@@ -36,12 +39,18 @@ const SEARCH_FIELDS = [
   'newPtwNumber',
   'workLocation',
   'equipmentTagNo',
+  'ptwcStatus',
   'approvedByPtwc',
 ] as const;
 
-export async function getCurrentRegisterSummary(): Promise<PermitRegisterSummaryDTO> {
+export async function getCurrentRegisterSummary(user: SessionUser): Promise<PermitRegisterSummaryDTO> {
   await connectDb();
-  const today = ymdToUtcDate(getTodayYmd());
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const currentRegisterFilter = {
+    importBatchId: { $exists: false },
+    ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+  };
+  const today = ymdToUtcDate(getTodayYmd(new Date(), getEnv().APP_TIMEZONE));
   const tomorrow = new Date(today.getTime() + 86_400_000);
   const [counts, latestPermit, latestImport] = await Promise.all([
     PermitModel.aggregate<{
@@ -50,7 +59,7 @@ export async function getCurrentRegisterSummary(): Promise<PermitRegisterSummary
       closed: number;
       notClosed: number;
     }>([
-      { $match: { importBatchId: { $exists: false } } },
+      { $match: currentRegisterFilter },
       {
         $group: {
           _id: null,
@@ -75,11 +84,14 @@ export async function getCurrentRegisterSummary(): Promise<PermitRegisterSummary
         },
       },
     ]),
-    PermitModel.findOne({ importBatchId: { $exists: false } })
+    PermitModel.findOne(currentRegisterFilter)
       .sort({ updatedAt: -1 })
       .select('updatedAt')
       .lean<Pick<PermitDoc, 'updatedAt'> | null>(),
-    FileRecordModel.findOne({ kind: 'import' })
+    FileRecordModel.findOne({
+      kind: 'import',
+      ...(user.role === 'admin' ? {} : { createdBy: user.id }),
+    })
       .sort({ createdAt: -1 })
       .select('createdAt')
       .lean<{ createdAt: Date } | null>(),
@@ -98,7 +110,11 @@ export async function getCurrentRegisterSummary(): Promise<PermitRegisterSummary
   };
 }
 
-function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<PermitDoc> {
+function buildFilter(
+  filters: PermitFilters,
+  batchId?: string,
+  assignedSubContractor?: string,
+): FilterQuery<PermitDoc> {
   const filter: FilterQuery<PermitDoc> = {};
   const conditions: FilterQuery<PermitDoc>[] = [];
   filter.importBatchId = batchId ? batchId : { $exists: false };
@@ -112,13 +128,19 @@ function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<Perm
   } else if (filters.status === 'Overdue') {
     conditions.push({
       status: { $ne: 'Closed' },
-      planValidEndDate: { $lt: ymdToUtcDate(getTodayYmd()) },
+      planValidEndDate: {
+        $lt: ymdToUtcDate(getTodayYmd(new Date(), getEnv().APP_TIMEZONE)),
+      },
     });
   } else if (filters.status === 'Active' || filters.status === 'Not Closed') {
     conditions.push({
       status: { $ne: 'Closed' },
       $or: [
-        { planValidEndDate: { $gte: ymdToUtcDate(getTodayYmd()) } },
+        {
+          planValidEndDate: {
+            $gte: ymdToUtcDate(getTodayYmd(new Date(), getEnv().APP_TIMEZONE)),
+          },
+        },
         { planValidEndDate: { $exists: false } },
       ],
     });
@@ -127,7 +149,8 @@ function buildFilter(filters: PermitFilters, batchId?: string): FilterQuery<Perm
   if (filters.discipline) filter.discipline = filters.discipline;
   if (filters.plantDivision) filter.plantDivision = filters.plantDivision;
   if (filters.company) filter.company = filters.company;
-  if (filters.subContractor) filter.subContractor = filters.subContractor;
+  if (assignedSubContractor) filter.subContractor = assignedSubContractor;
+  else if (filters.subContractor) filter.subContractor = filters.subContractor;
   if (filters.ptwType) filter.newPtwType = filters.ptwType;
 
   if (filters.fieldKey && filters.fieldValue) {
@@ -171,9 +194,12 @@ async function assertUniquePtwNumber(
   if (existing) throw conflict(`New PTW Number "${newPtwNumber}" already exists`);
 }
 
-export async function listPermits(query: PermitQuery): Promise<Paginated<PermitDTO>> {
+export async function listPermits(
+  query: PermitQuery,
+  user: SessionUser,
+): Promise<Paginated<PermitDTO>> {
   await connectDb();
-  const filter = buildFilter(query, query.batchId);
+  const filter = buildFilter(query, query.batchId, assignedSubContractorFor(user));
   const sort = { [query.sortBy]: query.sortOrder === 'asc' ? 1 : -1, _id: -1 } as const;
 
   const [docs, total] = await Promise.all([
@@ -209,21 +235,30 @@ export async function findPermitsForExport(
   return docs.map(toPermitDTO);
 }
 
-export async function getPermit(id: string): Promise<PermitDTO> {
+export async function getPermit(id: string, user?: SessionUser): Promise<PermitDTO> {
   assertObjectId(id, 'Permit');
   await connectDb();
   const doc = await PermitModel.findById(id).populate(POPULATE).lean<PermitDoc>();
   if (!doc) throw notFound('Permit');
+  const assignedSubContractor = user ? assignedSubContractorFor(user) : undefined;
+  if (
+    assignedSubContractor &&
+    (doc.subContractor !== assignedSubContractor || doc.importBatchId !== undefined)
+  ) {
+    throw notFound('Permit');
+  }
   return toPermitDTO(doc);
 }
 
 export async function createPermit(
   input: PermitInput,
-  userId: string,
+  user: SessionUser,
   batchId?: string,
 ): Promise<PermitDTO> {
   await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
   if (batchId) {
+    if (user.role !== 'admin') throw notFound('Imported snapshot');
     assertObjectId(batchId, 'Import');
     const batch = await FileRecordModel.findOne({
       _id: batchId,
@@ -237,13 +272,31 @@ export async function createPermit(
   await assertUniquePtwNumber(input.newPtwNumber, undefined, batchId);
 
   const srNo = await reserveSequence('permit');
-  const { set } = permitInputToUpdate(input);
+  const { set } = permitInputToUpdate({
+    ...input,
+    ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+  });
   const doc = await PermitModel.create({
     ...set,
     srNo,
     ...(batchId ? { importBatchId: batchId } : {}),
-    createdBy: userId,
-    updatedBy: userId,
+    createdBy: user.id,
+    updatedBy: user.id,
+  });
+  await FileRecordModel.create({
+    kind: 'add',
+    originalName: 'Manual permit addition',
+    bytes: 0,
+    rowCount: 1,
+    subContractors: set.subContractor ? [String(set.subContractor)] : [],
+    importedPermits: [
+      {
+        srNo,
+        newPtwNumber: input.newPtwNumber,
+        subContractor: String(set.subContractor ?? ''),
+      },
+    ],
+    createdBy: user.id,
   });
   return getPermit(String(doc._id));
 }
@@ -394,7 +447,11 @@ export async function applyReviewedImport(
   approvals: ImportFieldApproval[],
   addRowNumbers: number[],
   userId: string,
-): Promise<{ inserted: number; updated: number }> {
+): Promise<{
+  inserted: number;
+  updated: number;
+  addedPermits: Array<{ srNo: number; newPtwNumber?: string; subContractor?: string }>;
+}> {
   await connectDb();
   const existing = await findCurrentPermitsForRows(rows);
   const previewRows = makeImportPreviewRows(rows, existing);
@@ -493,11 +550,23 @@ export async function applyReviewedImport(
   }
 
   const insertOperations = operations.filter((operation) => 'insertOne' in operation);
+  const addedPermits: Array<{ srNo: number; newPtwNumber?: string; subContractor?: string }> = [];
   if (insertOperations.length > 0) {
     const firstSr = await reserveSequence('permit', insertOperations.length);
     insertOperations.forEach((operation, index) => {
       const insert = operation.insertOne as { document: Record<string, unknown> };
       insert.document.srNo = firstSr + index;
+      addedPermits.push({
+        srNo: firstSr + index,
+        newPtwNumber:
+          typeof insert.document.newPtwNumber === 'string'
+            ? insert.document.newPtwNumber
+            : undefined,
+        subContractor:
+          typeof insert.document.subContractor === 'string'
+            ? insert.document.subContractor
+            : undefined,
+      });
     });
   }
 
@@ -513,5 +582,6 @@ export async function applyReviewedImport(
   return {
     inserted: insertOperations.length,
     updated: operations.length - insertOperations.length,
+    addedPermits,
   };
 }

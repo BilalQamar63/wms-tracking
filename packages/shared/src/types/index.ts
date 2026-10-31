@@ -10,6 +10,7 @@ export interface UserRef {
   id: string;
   name: string;
   isDeleted: boolean;
+  assignedSubContractor?: string;
 }
 
 export interface PermitDTO extends PermitInput {
@@ -34,6 +35,7 @@ export interface UserDTO {
   name: string;
   email: string;
   role: Role;
+  assignedSubContractor?: string;
   isActive: boolean;
   lastLoginAt?: string;
   createdAt: string;
@@ -41,9 +43,12 @@ export interface UserDTO {
   permitCount?: number;
 }
 
-export type SessionUser = Pick<UserDTO, 'id' | 'name' | 'email' | 'role'>;
+export type SessionUser = Pick<
+  UserDTO,
+  'id' | 'name' | 'email' | 'role' | 'assignedSubContractor'
+>;
 
-export type FileKind = 'import' | 'export';
+export type FileKind = 'import' | 'export' | 'add';
 
 export interface ImportStats {
   total: number;
@@ -64,6 +69,12 @@ export interface FileRecordDTO {
   bytes: number;
   rowCount: number;
   stats?: ImportStats;
+  subContractors?: string[];
+  importedPermits?: Array<{
+    srNo: number;
+    newPtwNumber?: string;
+    subContractor?: string;
+  }>;
   errors?: ImportRowError[];
   createdBy?: UserRef;
   createdAt: string;

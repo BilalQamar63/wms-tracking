@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import {
   PERMIT_FIELD_LIST,
   FORM_SECTIONS,
+  PTWC_APPROVER_NAME,
   REGISTER_TITLE,
   SR_NO_HEADER,
   formatPlanValidity,
@@ -24,7 +25,6 @@ import {
 const FONT = 'Calibri';
 const THIN = { style: 'thin', color: { argb: 'FFBFBFBF' } } as const;
 const BORDER: Partial<ExcelJS.Borders> = { top: THIN, left: THIN, bottom: THIN, right: THIN };
-
 function excelDateExpression(value?: string): string {
   const ymd = toDateInputValue(value);
   if (!ymd) return '""';
@@ -33,8 +33,8 @@ function excelDateExpression(value?: string): string {
 }
 
 function ptwValidityFormula(startDate: string, endDate: string): string {
-  const duration = `${endDate}-${startDate}+1`;
-  return `IF(OR(${startDate}="",${endDate}=""),"",IF(${duration}<1,"Invalid date range",IF(${duration}=1,"1 day left",${duration}&" days left")))`;
+  const duration = `${endDate}-${startDate}`;
+  return `IF(OR(${startDate}="",${endDate}=""),"",IF(${duration}<0,"Invalid date range",IF(${duration}=1,"1 day left",${duration}&" days left")))`;
 }
 
 /** Writes every dropdown option list to a hidden sheet and returns the range reference per field. */
@@ -51,7 +51,8 @@ function addListsSheet(
     const letter = sheet.getColumn(column).letter;
     sheet.getCell(1, column).value = field.header;
     field.options.forEach((option, index) => {
-      sheet.getCell(index + 2, column).value = option;
+      sheet.getCell(index + 2, column).value =
+        field.key === 'ptwcStatus' ? `${option} by ${PTWC_APPROVER_NAME}` : option;
     });
     ranges.set(
       field.key,
@@ -71,9 +72,11 @@ export async function buildPermitWorkbook(
   permits: PermitDTO[],
   fieldKeys?: readonly PermitFieldKey[],
 ): Promise<Buffer> {
-  const selectedFields = fieldKeys
-    ? PERMIT_FIELD_LIST.filter((field) => fieldKeys.includes(field.key as PermitFieldKey))
-    : PERMIT_FIELD_LIST;
+  const selectedFields = PERMIT_FIELD_LIST.filter(
+    (field) =>
+      field.exportToExcel !== false &&
+      (!fieldKeys || fieldKeys.includes(field.key as PermitFieldKey)),
+  );
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'WMS Tracking';
   workbook.created = new Date();
@@ -130,6 +133,7 @@ export async function buildPermitWorkbook(
   sheet.getColumn(1).width = 8;
   selectedFields.forEach((field, index) => {
     sheet.getColumn(index + 2).width = field.width;
+    if (field.type === 'date') sheet.getColumn(index + 2).numFmt = DATE_FORMAT;
   });
   const startDateIndex = selectedFields.findIndex((field) => field.key === 'planValidStartDate');
   const endDateIndex = selectedFields.findIndex((field) => field.key === 'planValidEndDate');
@@ -168,6 +172,10 @@ export async function buildPermitWorkbook(
       if (field.key === 'certificateType' && Array.isArray(raw)) {
         certificateText = raw.join(', ');
         cell.value = certificateText;
+        return;
+      }
+      if (field.key === 'ptwcStatus') {
+        cell.value = `${raw} by ${PTWC_APPROVER_NAME}`;
         return;
       }
       if (field.type === 'date') {
@@ -226,8 +234,7 @@ export async function buildPermitWorkbook(
             ? {
                 showInputMessage: true,
                 promptTitle: 'Multiple certificates',
-                prompt:
-                  'Choose one certificate, then enter additional selections separated by commas.',
+                prompt: 'Enter certificate names separated by commas.',
               }
             : {}),
         };
@@ -241,6 +248,5 @@ export async function buildPermitWorkbook(
     to: { row: HEADER_ROW, column: lastColumn },
   };
 
-  const data = await workbook.xlsx.writeBuffer();
-  return Buffer.from(data);
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }

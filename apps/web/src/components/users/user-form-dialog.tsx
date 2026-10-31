@@ -1,10 +1,15 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useForm, type Resolver } from 'react-hook-form';
+import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { USER_ROLES, createUserSchema, updateUserSchema, type UserDTO } from '@wms/shared';
+import {
+  SUB_CONTRACTORS,
+  USER_ROLES,
+  createUserSchema,
+  updateUserSchema,
+  type UserDTO,
+} from '@wms/shared';
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
@@ -18,6 +23,7 @@ interface FormValues {
   email: string;
   password?: string;
   role: 'admin' | 'user';
+  assignedSubContractor?: string;
   isActive: boolean;
 }
 
@@ -28,7 +34,7 @@ interface Props {
   onSaved: () => void;
 }
 
-const schemaFor = (isEdit: boolean) => (isEdit ? updateUserSchema : createUserSchema.extend({ isActive: z.boolean().default(true) }));
+const schemaFor = (isEdit: boolean) => (isEdit ? updateUserSchema : createUserSchema);
 
 export function UserFormDialog({ open, user, onClose, onSaved }: Props) {
   const toast = useToast();
@@ -36,6 +42,7 @@ export function UserFormDialog({ open, user, onClose, onSaved }: Props) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
@@ -43,13 +50,28 @@ export function UserFormDialog({ open, user, onClose, onSaved }: Props) {
     resolver: zodResolver(schemaFor(isEdit)) as unknown as Resolver<FormValues>,
     defaultValues: { name: '', email: '', password: '', role: 'user', isActive: true },
   });
+  const role = useWatch({ control, name: 'role' });
 
   useEffect(() => {
     if (open) {
       reset(
         user
-          ? { name: user.name, email: user.email, password: '', role: user.role, isActive: user.isActive }
-          : { name: '', email: '', password: '', role: 'user', isActive: true },
+          ? {
+              name: user.name,
+              email: user.email,
+              password: '',
+              role: user.role,
+              assignedSubContractor: user.assignedSubContractor ?? '',
+              isActive: user.isActive,
+            }
+          : {
+              name: '',
+              email: '',
+              password: '',
+              role: 'user',
+              assignedSubContractor: '',
+              isActive: true,
+            },
       );
     }
   }, [open, user, reset]);
@@ -98,6 +120,22 @@ export function UserFormDialog({ open, user, onClose, onSaved }: Props) {
             <input type="checkbox" className="h-4 w-4 rounded border-slate-300" {...register('isActive')} /> Active
           </label>
         </div>
+        {role === 'user' && (
+          <FormField
+            label="Assigned sub contractor"
+            htmlFor="user-sub-contractor"
+            error={errors.assignedSubContractor?.message}
+            required
+          >
+            <Select
+              id="user-sub-contractor"
+              placeholder="Select a sub contractor"
+              options={SUB_CONTRACTORS}
+              invalid={!!errors.assignedSubContractor}
+              {...register('assignedSubContractor')}
+            />
+          </FormField>
+        )}
       </form>
     </Modal>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import {
   FORM_SECTIONS,
@@ -40,18 +40,23 @@ interface Props {
   visibleFields: readonly PermitFieldKey[];
   selectedField: PermitFieldKey | null;
   navigationVersion: number;
+  appTimeZone: string;
 }
 
-function renderCell(permit: PermitDTO, key: string, type: string) {
+function renderCell(permit: PermitDTO, key: string, type: string, today: string) {
   const value = permit[key as keyof PermitDTO] as string | string[] | undefined;
   if (key === 'status') {
     const endDate = toDateInputValue(permit.planValidEndDate);
-    const status = value !== 'Closed' && endDate && endDate < getTodayYmd() ? 'Overdue' : value;
+    const status = value !== 'Closed' && endDate && endDate < today ? 'Overdue' : value;
     return <StatusBadge status={typeof status === 'string' ? status : undefined} />;
   }
   if (key === 'ptwValidity')
     return (
-      <PlanCountdown startDate={permit.planValidStartDate} endDate={permit.planValidEndDate} />
+      <PlanCountdown
+        startDate={permit.planValidStartDate}
+        endDate={permit.planValidEndDate}
+        today={today}
+      />
     );
   if (!value) return <span className="text-slate-300">—</span>;
   if (type === 'date') return formatDisplayDate(value as string);
@@ -66,8 +71,10 @@ export function PermitTable({
   visibleFields,
   selectedField,
   navigationVersion,
+  appTimeZone,
 }: Props) {
   const tableContainer = useRef<HTMLDivElement>(null);
+  const [today, setToday] = useState(() => getTodayYmd(new Date(), appTimeZone));
   const columns = COLUMNS.filter((column) => visibleFields.includes(column.key as PermitFieldKey));
   const sectionColumns = FORM_SECTIONS.map((section) => ({
     ...section,
@@ -90,6 +97,16 @@ export function PermitTable({
       container.scrollLeft;
     container.scrollTo({ left: targetLeft, behavior: 'smooth' });
   }, [selectedField, visibleFields, navigationVersion]);
+
+  useEffect(() => {
+    const updateToday = () => setToday(getTodayYmd(new Date(), appTimeZone));
+    const interval = window.setInterval(updateToday, 60_000);
+    window.addEventListener('focus', updateToday);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', updateToday);
+    };
+  }, [appTimeZone]);
 
   return (
     <div ref={tableContainer} className="overflow-x-auto">
@@ -149,7 +166,7 @@ export function PermitTable({
                   data-permit-column={column.key}
                   className={`max-w-[16rem] px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
                 >
-                  {renderCell(permit, column.key, column.type)}
+                  {renderCell(permit, column.key, column.type, today)}
                 </td>
               ))}
               {canManage && (

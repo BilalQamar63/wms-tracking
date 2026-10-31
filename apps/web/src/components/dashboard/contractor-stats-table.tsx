@@ -6,11 +6,12 @@ import { EmptyState } from '@/components/ui/empty-state';
 
 interface Props {
   contractors: CompanyPermitStatsDTO[];
+  canExport: boolean;
   onExport: (mainContractor: string, subContractor: string) => void;
   exportingKey: string | null;
 }
 
-export function ContractorStatsTable({ contractors, onExport, exportingKey }: Props) {
+export function ContractorStatsTable({ contractors, canExport, onExport, exportingKey }: Props) {
   if (contractors.length === 0) {
     return (
       <EmptyState title="No contractors found">Try changing the dashboard filters.</EmptyState>
@@ -40,9 +41,11 @@ export function ContractorStatsTable({ contractors, onExport, exportingKey }: Pr
             <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
               Overdue
             </th>
-            <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Download
-            </th>
+            {canExport && (
+              <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Download
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 bg-white">
@@ -68,7 +71,7 @@ export function ContractorStatsTable({ contractors, onExport, exportingKey }: Pr
                 <td className="px-5 py-4 text-right text-sm">
                   <Badge tone="red">{contractor.overdue}</Badge>
                 </td>
-                <td className="px-5 py-3">
+                {canExport && <td className="px-5 py-3">
                   <div className="flex items-center justify-end gap-2">
                     <Button
                       size="sm"
@@ -82,7 +85,7 @@ export function ContractorStatsTable({ contractors, onExport, exportingKey }: Pr
                       Export
                     </Button>
                   </div>
-                </td>
+                </td>}
               </tr>
             );
           })}

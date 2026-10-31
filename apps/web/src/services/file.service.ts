@@ -11,6 +11,7 @@ import type {
 } from '@wms/shared';
 import { ymdToUtcDate } from '@wms/shared';
 import type { FilterQuery } from 'mongoose';
+import { assignedSubContractorFor } from '@/lib/auth/permissions';
 import { connectDb } from '@/lib/db/mongoose';
 import { parsePermitWorkbook } from '@/lib/excel/workbook-parser';
 import { buildPermitWorkbook } from '@/lib/excel/workbook-builder';
@@ -28,7 +29,7 @@ import {
 import type { PermitFilters, PermitImportDayDTO } from '@wms/shared';
 import { PermitModel } from '@/models/Permit';
 
-const POPULATE = { path: 'createdBy', select: 'name isDeleted' };
+const POPULATE = { path: 'createdBy', select: 'name isDeleted assignedSubContractor' };
 const MAX_STORED_ERRORS = 100;
 
 export async function listFiles(query: FileQuery): Promise<Paginated<FileRecordDTO>> {
@@ -129,8 +130,8 @@ async function getFileDoc(id: string): Promise<FileRecordDoc> {
 
 function assertValidImportFile(file: File): void {
   const maxBytes = getEnv().MAX_UPLOAD_MB * 1024 * 1024;
-  if (!file.name.toLowerCase().endsWith('.xlsx'))
-    throw badRequest('Only .xlsx files are supported');
+  if (!/\.(xlsx|xlsm)$/i.test(file.name))
+    throw badRequest('Only .xlsx and .xlsm files are supported');
   if (file.size === 0) throw badRequest('The uploaded file is empty');
   if (file.size > maxBytes) throw badRequest(`File is larger than ${getEnv().MAX_UPLOAD_MB} MB`);
 }
@@ -142,14 +143,50 @@ async function parseImportFile(file: File) {
 }
 
 /** Parses an upload and previews changes without modifying the current register. */
-export async function previewPermitFile(file: File): Promise<ImportPreviewDTO> {
+function filterRowsForAssignment(
+  rows: Awaited<ReturnType<typeof parseImportFile>>['rows'],
+  assignedSubContractor: string | undefined,
+) {
+  if (!assignedSubContractor) return { rows, errors: [] as ImportPreviewDTO['errors'] };
+  const allowed: typeof rows = [];
+  const errors: ImportPreviewDTO['errors'] = [];
+  for (const row of rows) {
+    if (row.data.subContractor?.trim().toLowerCase() === assignedSubContractor.toLowerCase()) {
+      allowed.push(row);
+    } else {
+      errors.push({
+        row: row.rowNumber,
+        messages: [`Sub Contractor must be "${assignedSubContractor}" for your account`],
+      });
+    }
+  }
+  return { rows: allowed, errors };
+}
+
+export async function previewPermitFile(file: File, user: SessionUser): Promise<ImportPreviewDTO> {
   const parsed = await parseImportFile(file);
-  return previewCurrentRegisterImport(
-    parsed.rows,
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const scoped = filterRowsForAssignment(parsed.rows, assignedSubContractor);
+  const preview = await previewCurrentRegisterImport(
+    scoped.rows,
     file.name,
     parsed.totalRows,
-    parsed.errors.slice(0, MAX_STORED_ERRORS),
+    [...parsed.errors, ...scoped.errors].slice(0, MAX_STORED_ERRORS),
   );
+  if (!assignedSubContractor) return preview;
+
+  const existingRows = preview.rows.filter((row) => row.action === 'update');
+  return {
+    ...preview,
+    rows: preview.rows.filter((row) => row.action === 'add'),
+    errors: [
+      ...preview.errors,
+      ...existingRows.map((row) => ({
+        row: row.rowNumber,
+        messages: ['This permit already exists. Users can only add new permits.'],
+      })),
+    ].slice(0, MAX_STORED_ERRORS),
+  };
 }
 
 /** Applies the reviewed fields and records an audit entry, without creating a permit snapshot. */
@@ -160,13 +197,52 @@ export async function commitPermitFile(
   addRowNumbers: number[],
 ): Promise<ImportResultDTO> {
   const parsed = await parseImportFile(file);
-  const { inserted, updated } = await applyReviewedImport(
-    parsed.rows,
-    approvals,
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const scoped = filterRowsForAssignment(parsed.rows, assignedSubContractor);
+  let importRows = scoped.rows;
+  let importApprovals = approvals;
+  let importErrors = [...parsed.errors, ...scoped.errors];
+
+  if (assignedSubContractor) {
+    if (approvals.length > 0) {
+      throw badRequest('Users can only add new permits and cannot update existing permits');
+    }
+    const preview = await previewCurrentRegisterImport(
+      importRows,
+      file.name,
+      parsed.totalRows,
+      importErrors,
+    );
+    const existingRows = preview.rows.filter((row) => row.action === 'update');
+    importErrors = [
+      ...preview.errors,
+      ...existingRows.map((row) => ({
+        row: row.rowNumber,
+        messages: ['This permit already exists. Users can only add new permits.'],
+      })),
+    ];
+    const allowedRows = new Set(
+      preview.rows.filter((row) => row.action === 'add').map((row) => row.rowNumber),
+    );
+    if (addRowNumbers.some((rowNumber) => !allowedRows.has(rowNumber))) {
+      throw badRequest('Only new permits for your assigned sub contractor can be added');
+    }
+    importRows = importRows.filter((row) => allowedRows.has(row.rowNumber));
+    importApprovals = [];
+  }
+
+  const { inserted, updated, addedPermits } = await applyReviewedImport(
+    importRows,
+    importApprovals,
     addRowNumbers,
     user.id,
   );
-  const stats = { total: parsed.totalRows, inserted, updated, failed: parsed.errors.length };
+  const stats = {
+    total: parsed.totalRows,
+    inserted,
+    updated,
+    failed: importErrors.length,
+  };
 
   const record = await FileRecordModel.create({
     kind: 'import',
@@ -175,12 +251,16 @@ export async function commitPermitFile(
     rowCount: parsed.totalRows,
     snapshotAvailable: false,
     stats,
-    importErrors: parsed.errors.slice(0, MAX_STORED_ERRORS),
+    subContractors: [
+      ...new Set(importRows.map((row) => row.data.subContractor?.trim()).filter(Boolean)),
+    ] as string[],
+    importedPermits: addedPermits,
+    importErrors: importErrors.slice(0, MAX_STORED_ERRORS),
     createdBy: user.id,
   });
 
   const saved = await getFileDoc(String(record._id));
-  return { file: toFileRecordDTO(saved), stats, errors: parsed.errors.slice(0, MAX_STORED_ERRORS) };
+  return { file: toFileRecordDTO(saved), stats, errors: importErrors.slice(0, MAX_STORED_ERRORS) };
 }
 
 /** Builds an Excel download and records export metadata in MongoDB. */
@@ -199,6 +279,7 @@ export async function exportPermitFile(
     originalName: fileName,
     bytes: buffer.length,
     rowCount: permits.length,
+    subContractors: [...new Set(permits.map((permit) => permit.subContractor).filter(Boolean))],
     createdBy: user.id,
   });
 

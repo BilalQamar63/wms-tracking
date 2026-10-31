@@ -11,6 +11,12 @@ export interface FileRecordDoc {
   rowCount: number;
   snapshotAvailable?: boolean;
   stats?: ImportStats;
+  subContractors?: string[];
+  importedPermits?: Array<{
+    srNo: number;
+    newPtwNumber?: string;
+    subContractor?: string;
+  }>;
   importErrors?: ImportRowError[];
   createdBy?: Types.ObjectId;
   /** Creation time == the import / export date shown in the history list. */
@@ -20,7 +26,7 @@ export interface FileRecordDoc {
 
 const fileRecordSchema = new Schema<FileRecordDoc>(
   {
-    kind: { type: String, enum: ['import', 'export'], required: true, index: true },
+    kind: { type: String, enum: ['import', 'export', 'add'], required: true, index: true },
     originalName: { type: String, required: true },
     publicId: { type: String },
     bytes: { type: Number, default: 0 },
@@ -31,6 +37,20 @@ const fileRecordSchema = new Schema<FileRecordDoc>(
         { total: Number, inserted: Number, updated: Number, failed: Number },
         { _id: false },
       ),
+    },
+    subContractors: { type: [String], default: undefined },
+    importedPermits: {
+      type: [
+        new Schema(
+          {
+            srNo: Number,
+            newPtwNumber: String,
+            subContractor: String,
+          },
+          { _id: false },
+        ),
+      ],
+      default: undefined,
     },
     importErrors: {
       type: [new Schema({ row: Number, messages: [String] }, { _id: false })],

@@ -8,9 +8,11 @@ import { getTodayYmd, PERMIT_FIELD_LIST, PTW_TYPES } from '@wms/shared';
 import type { SessionUser } from '@wms/shared';
 import type { PipelineStage } from 'mongoose';
 import { ymdToUtcDate } from '@wms/shared';
+import { assignedSubContractorFor } from '@/lib/auth/permissions';
 import { connectDb } from '@/lib/db/mongoose';
 import { buildPermitWorkbook } from '@/lib/excel/workbook-builder';
 import { badRequest } from '@/lib/http/errors';
+import { getEnv } from '@/lib/env';
 import { toPermitDTO } from '@/lib/mappers';
 import { escapeRegex } from '@/lib/utils/object-id';
 import { timestampForFileName, sanitizeFileName } from '@/lib/utils/file-name';
@@ -73,7 +75,12 @@ function uniquePermitPipeline(): PipelineStage[] {
                 case: {
                   $and: [
                     { $eq: [{ $type: '$planValidEndDate' }, 'date'] },
-                    { $lt: ['$planValidEndDate', ymdToUtcDate(getTodayYmd())] },
+                    {
+                      $lt: [
+                        '$planValidEndDate',
+                        ymdToUtcDate(getTodayYmd(new Date(), getEnv().APP_TIMEZONE)),
+                      ],
+                    },
                   ],
                 },
                 then: 'Overdue',
@@ -131,6 +138,7 @@ function dashboardPermitMatch(filters: PermitFilters): PipelineStage.Match {
       'newPtwNumber',
       'workLocation',
       'equipmentTagNo',
+      'ptwcStatus',
       'approvedByPtwc',
     ].map((field) => ({ [field]: regex }));
   }
@@ -139,12 +147,15 @@ function dashboardPermitMatch(filters: PermitFilters): PipelineStage.Match {
 
 export async function getPermitDashboardStats(
   filters: PermitFilters,
+  user: SessionUser,
 ): Promise<PermitDashboardStatsDTO> {
   await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
 
   const rows = await PermitModel.aggregate<CompanyAggregateRow>([
     ...uniquePermitPipeline(),
     dashboardPermitMatch(filters),
+    ...(assignedSubContractor ? [{ $match: { subContractor: assignedSubContractor } }] : []),
     {
       $project: {
         mainContractor: { $trim: { input: { $ifNull: ['$company', ''] } } },
@@ -251,6 +262,7 @@ export async function exportCompanyPermits(
     originalName: fileName,
     bytes: buffer.length,
     rowCount: permits.length,
+    subContractors: [...new Set(permits.map((permit) => permit.subContractor).filter(Boolean))],
     createdBy: user.id,
   });
 

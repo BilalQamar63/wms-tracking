@@ -1,4 +1,4 @@
-import { requireAdmin, requireUser } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { ok, route } from '@/lib/http/response';
 import { deleteFile, getFileDetails } from '@/services/file.service';
 
@@ -9,7 +9,7 @@ type Params = { id: string };
 
 /** Full record including the stored per-row import errors. */
 export const GET = route<Params>(async (_req, { params }) => {
-  await requireUser();
+  await requireAdmin();
   return ok(await getFileDetails(params.id));
 });
 

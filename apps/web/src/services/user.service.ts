@@ -52,6 +52,8 @@ export async function createUser(input: CreateUserInput): Promise<UserDTO> {
     name: input.name,
     email: input.email,
     role: input.role,
+    assignedSubContractor:
+      input.role === 'user' ? input.assignedSubContractor : undefined,
     passwordHash: await hashPassword(input.password),
   });
   return toUserDTO(doc.toObject() as UserDoc, 0);
@@ -76,9 +78,17 @@ export async function updateUser(id: string, input: UpdateUserInput, actor: Sess
     role: input.role,
     isActive: input.isActive,
   };
+  if (input.role === 'user') update.assignedSubContractor = input.assignedSubContractor;
   if (input.password) update.passwordHash = await hashPassword(input.password);
 
-  const saved = await UserModel.findByIdAndUpdate(id, { $set: update }, { new: true }).lean<UserDoc>();
+  const saved = await UserModel.findByIdAndUpdate(
+    id,
+    {
+      $set: update,
+      ...(input.role === 'admin' ? { $unset: { assignedSubContractor: 1 } } : {}),
+    },
+    { new: true },
+  ).lean<UserDoc>();
   if (!saved) throw notFound('User');
   return toUserDTO(saved);
 }

@@ -3,7 +3,8 @@
 import { FileSpreadsheet } from 'lucide-react';
 import { FORM_SECTIONS, PERMIT_FIELD_LIST, type PermitFieldKey } from '@wms/shared';
 
-const ALL_FIELD_KEYS = PERMIT_FIELD_LIST.map((field) => field.key as PermitFieldKey);
+const EXCEL_FIELDS = PERMIT_FIELD_LIST.filter((field) => field.exportToExcel !== false);
+const ALL_FIELD_KEYS = EXCEL_FIELDS.map((field) => field.key as PermitFieldKey);
 
 interface Props {
   selectedFields: readonly PermitFieldKey[];
@@ -47,7 +48,7 @@ export function ExcelFieldPicker({ selectedFields, onChange, expanded = false }:
             {section.title}
           </legend>
           <div className="space-y-2">
-            {PERMIT_FIELD_LIST.filter((field) => field.section === section.id).map((field) => {
+            {EXCEL_FIELDS.filter((field) => field.section === section.id).map((field) => {
               const key = field.key as PermitFieldKey;
               return (
                 <label

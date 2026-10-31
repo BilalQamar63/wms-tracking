@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { USER_ROLES } from '../constants/options';
+import { SUB_CONTRACTORS, USER_ROLES } from '../constants/options';
 
 const email = z.string().trim().toLowerCase().email('Enter a valid email address');
 const password = z.string().min(8, 'Password must be at least 8 characters').max(72);
@@ -16,6 +16,18 @@ export const createUserSchema = z.object({
   email,
   password,
   role: z.enum(USER_ROLES).default('user'),
+  assignedSubContractor: z.preprocess(
+    emptyToUndefined,
+    z.enum(SUB_CONTRACTORS).optional(),
+  ),
+}).superRefine((user, ctx) => {
+  if (user.role === 'user' && !user.assignedSubContractor) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['assignedSubContractor'],
+      message: 'Select a sub contractor for this user',
+    });
+  }
 });
 
 export const updateUserSchema = z.object({
@@ -24,7 +36,19 @@ export const updateUserSchema = z.object({
   /** Leave empty to keep the current password. */
   password: z.preprocess(emptyToUndefined, password.optional()),
   role: z.enum(USER_ROLES),
+  assignedSubContractor: z.preprocess(
+    emptyToUndefined,
+    z.enum(SUB_CONTRACTORS).optional(),
+  ),
   isActive: z.boolean(),
+}).superRefine((user, ctx) => {
+  if (user.role === 'user' && !user.assignedSubContractor) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['assignedSubContractor'],
+      message: 'Select a sub contractor for this user',
+    });
+  }
 });
 
 export const deleteUserQuerySchema = z.object({
@@ -36,7 +60,7 @@ export const deleteUserQuerySchema = z.object({
 });
 
 export const fileQuerySchema = z.object({
-  kind: z.preprocess(emptyToUndefined, z.enum(['import', 'export']).optional()),
+  kind: z.preprocess(emptyToUndefined, z.enum(['import', 'export', 'add']).optional()),
   dateFrom: ymd,
   dateTo: ymd,
   page: z.coerce.number().int().min(1).default(1),

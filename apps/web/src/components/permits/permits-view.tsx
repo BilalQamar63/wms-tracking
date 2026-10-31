@@ -29,7 +29,17 @@ const ALL_TABLE_FIELDS = PERMIT_FIELD_LIST.filter((field) => field.inTable).map(
   (field) => field.key as PermitFieldKey,
 );
 
-export function PermitsView({ canManage }: { canManage: boolean }) {
+export function PermitsView({
+  canManage,
+  canImport,
+  assignedSubContractor,
+  appTimeZone,
+}: {
+  canManage: boolean;
+  canImport: boolean;
+  assignedSubContractor?: string;
+  appTimeZone: string;
+}) {
   const toast = useToast();
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [page, setPage] = useState(1);
@@ -152,15 +162,17 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
         description="Manage the current PTW tracking register. Excel imports are reviewed and merged into this register."
         actions={
           <>
-            {canManage && (
+            {canImport && (
               <Button variant="secondary" onClick={() => setImportOpen(true)}>
                 <Upload className="h-4 w-4" /> Import
               </Button>
             )}
-            <Button variant="secondary" onClick={() => setExportOptionsOpen(true)}>
-              <Download className="h-4 w-4" /> Export
-            </Button>
             {canManage && (
+              <Button variant="secondary" onClick={() => setExportOptionsOpen(true)}>
+                <Download className="h-4 w-4" /> Export
+              </Button>
+            )}
+            {(canManage || canImport) && (
               <Button
                 onClick={() => {
                   setEditing(null);
@@ -296,6 +308,7 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
               visibleFields={visibleFields}
               selectedField={selectedTableField}
               navigationVersion={tableNavigationVersion}
+              appTimeZone={appTimeZone}
             />
             <Pagination
               page={data.page}
@@ -374,26 +387,29 @@ export function PermitsView({ canManage }: { canManage: boolean }) {
           </div>
         </Modal>
       )}
-      {canManage && (
+      {(canManage || canImport) && (
         <PermitFormDialog
           open={formOpen}
           permit={editing}
+          assignedSubContractor={canManage ? undefined : assignedSubContractor}
           onClose={() => setFormOpen(false)}
           onSaved={async () => {
             await refreshRegister();
           }}
         />
       )}
-      {canManage && (
+      {canImport && (
         <ImportDialog
           open={importOpen}
+          canUpdate={canManage}
+          assignedSubContractor={assignedSubContractor}
           onClose={() => setImportOpen(false)}
           onImported={() => {
             setFilters(EMPTY_PERMIT_FILTERS);
             setPage(1);
             mutate((key) => typeof key === 'string' && key.startsWith('/api/permits'));
             mutate('/api/permits/summary');
-            refreshFileHistory();
+            if (canManage) refreshFileHistory();
           }}
         />
       )}

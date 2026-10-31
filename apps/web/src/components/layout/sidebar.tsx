@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils/cn';
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
   { href: '/permits', label: 'PTW Register', icon: ClipboardList, adminOnly: false },
-  { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: false },
+  { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: true },
   { href: '/users', label: 'Users', icon: Users, adminOnly: true },
 ] as const;
 
@@ -56,6 +56,9 @@ export function Sidebar({ user }: { user: SessionUser }) {
       <div className="border-t border-slate-200 p-4">
         <p className="truncate text-sm font-medium text-slate-900">{user.name}</p>
         <p className="truncate text-xs text-slate-500">{user.email}</p>
+        {user.assignedSubContractor && (
+          <p className="mt-1 truncate text-xs text-slate-500">{user.assignedSubContractor}</p>
+        )}
         <button
           onClick={logout}
           className="mt-3 flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900"

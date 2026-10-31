@@ -46,7 +46,7 @@ export function addDaysToYmd(ymd: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Counts calendar days from the plan start through its end, inclusive. */
+/** Counts calendar days between the plan start and end, excluding the start date. */
 export function getPlanDurationDays(startDate: string, endDate: string): number | null {
   const isValidDate = (ymd: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
@@ -55,7 +55,7 @@ export function getPlanDurationDays(startDate: string, endDate: string): number 
   };
   if (!isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate) return null;
 
-  return (ymdToUtcDate(endDate).getTime() - ymdToUtcDate(startDate).getTime()) / 86_400_000 + 1;
+  return (ymdToUtcDate(endDate).getTime() - ymdToUtcDate(startDate).getTime()) / 86_400_000;
 }
 
 /** Returns the signed number of calendar days from today until `date`. */
@@ -75,12 +75,22 @@ export function getPlanDaysRemaining(endDate: string, now = new Date()): number 
   return daysUntilEnd === null ? null : Math.max(0, daysUntilEnd + 1);
 }
 
-/** Returns the current local calendar date as `YYYY-MM-DD`. */
-export function getTodayYmd(now = new Date()): string {
+/** Returns the current calendar date as `YYYY-MM-DD`, optionally in a named timezone. */
+export function getTodayYmd(now = new Date(), timeZone?: string): string {
+  if (timeZone) {
+    const parts = new Intl.DateTimeFormat('en', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** Formats the inclusive duration between the planned start and end dates. */
+/** Formats the number of days between the planned start and end dates. */
 export function formatPlanValidity(
   startDate?: string | Date | null,
   endDate?: string | Date | null,

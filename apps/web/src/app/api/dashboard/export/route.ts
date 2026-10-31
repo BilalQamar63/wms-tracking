@@ -6,7 +6,7 @@ import {
   permitFiltersSchema,
   type PermitFieldKey,
 } from '@wms/shared';
-import { requireUser } from '@/lib/auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { route, searchParamsToObject } from '@/lib/http/response';
 import { XLSX_MIME } from '@/lib/utils/file-name';
 import { exportCompanyPermits } from '@/services/dashboard.service';
@@ -18,7 +18,8 @@ export const maxDuration = 60;
 const fieldKeySchema = z
   .string()
   .refine(
-    (key): key is PermitFieldKey => PERMIT_FIELD_LIST.some((field) => field.key === key),
+    (key): key is PermitFieldKey =>
+      PERMIT_FIELD_LIST.some((field) => field.key === key && field.exportToExcel !== false),
     'Unknown Excel field',
   );
 const exportQuerySchema = permitFiltersSchema
@@ -33,7 +34,9 @@ const exportQuerySchema = permitFiltersSchema
     ...query,
     fields: query.fields
       ? query.fields.split(',').map((field) => field.trim())
-      : PERMIT_FIELD_LIST.map((field) => field.key as PermitFieldKey),
+      : PERMIT_FIELD_LIST.filter((field) => field.exportToExcel !== false).map(
+          (field) => field.key as PermitFieldKey,
+        ),
     ptwTypes: query.ptwTypes
       ? query.ptwTypes.split(',').map((value) => value.trim())
       : [...PTW_TYPES],
@@ -50,7 +53,7 @@ const exportQuerySchema = permitFiltersSchema
   );
 
 export const GET = route(async (req) => {
-  const user = await requireUser();
+  const user = await requireAdmin();
   const query = exportQuerySchema.parse(searchParamsToObject(req));
   const result = await exportCompanyPermits(
     query,

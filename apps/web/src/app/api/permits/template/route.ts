@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth/session';
+import { assignedSubContractorFor } from '@/lib/auth/permissions';
 import { buildPermitWorkbook } from '@/lib/excel/workbook-builder';
 import { route } from '@/lib/http/response';
 import { XLSX_MIME } from '@/lib/utils/file-name';
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 /** Blank register (headers + dropdowns) – not recorded in the history. */
 export const GET = route(async () => {
-  await requireUser();
+  assignedSubContractorFor(await requireUser());
   const buffer = await buildPermitWorkbook([]);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

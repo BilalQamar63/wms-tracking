@@ -13,14 +13,21 @@ import type { FileRecordDoc } from '@/models/FileRecord';
 import type { PermitDoc } from '@/models/Permit';
 import type { UserDoc } from '@/models/User';
 
-type PopulatedUser = Pick<UserDoc, 'name' | 'isDeleted'> & { _id: Types.ObjectId };
+type PopulatedUser = Pick<UserDoc, 'name' | 'isDeleted' | 'assignedSubContractor'> & {
+  _id: Types.ObjectId;
+};
 
 const isPopulated = (value: unknown): value is PopulatedUser =>
   typeof value === 'object' && value !== null && 'name' in value;
 
 export function toUserRef(value: unknown): UserRef | undefined {
   if (!isPopulated(value)) return undefined;
-  return { id: String(value._id), name: value.name, isDeleted: value.isDeleted };
+  return {
+    id: String(value._id),
+    name: value.name,
+    isDeleted: value.isDeleted,
+    assignedSubContractor: value.assignedSubContractor,
+  };
 }
 
 export function toPermitDTO(doc: PermitDoc): PermitDTO {
@@ -45,7 +52,10 @@ export function toPermitDTO(doc: PermitDoc): PermitDTO {
       );
       continue;
     }
-    const value = doc[field.key as keyof PermitDoc];
+    const value =
+      field.key === 'ptwcStatus'
+        ? doc.ptwcStatus ?? (doc.approvedByPtwc ? 'Approved' : undefined)
+        : doc[field.key as keyof PermitDoc];
     if (value === undefined || value === null) continue;
     (dto as unknown as Record<string, unknown>)[field.key] =
       field.type === 'date'
@@ -82,6 +92,7 @@ export function permitInputToUpdate(input: PermitInput): {
       set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;
     }
   }
+  unset.approvedByPtwc = 1;
   return { set, unset };
 }
 
@@ -98,6 +109,8 @@ export function toFileRecordDTO(doc: FileRecordDoc): FileRecordDTO {
     bytes: doc.bytes,
     rowCount: doc.rowCount,
     stats: doc.stats,
+    subContractors: doc.subContractors,
+    importedPermits: doc.importedPermits,
     errors: doc.importErrors,
     createdBy: toUserRef(doc.createdBy),
     createdAt: doc.createdAt.toISOString(),
@@ -110,6 +123,7 @@ export function toUserDTO(doc: UserDoc, permitCount?: number): UserDTO {
     name: doc.name,
     email: doc.email,
     role: doc.role,
+    assignedSubContractor: doc.assignedSubContractor,
     isActive: doc.isActive,
     lastLoginAt: doc.lastLoginAt?.toISOString(),
     createdAt: doc.createdAt.toISOString(),

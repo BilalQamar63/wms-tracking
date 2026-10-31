@@ -70,7 +70,8 @@ export const PERMIT_STATUS_FILTERS = ['Active', 'Closed', 'Overdue'] as const;
 
 export const WORK_PLANNING_TYPES = ['Planned', 'Emergency'] as const;
 
-export const DEFAULT_PTWC_APPROVER = 'Muhammad Sajid';
+export const PTWC_STATUS_OPTIONS = ['Approved', 'Rejected'] as const;
+export const PTWC_APPROVER_NAME = 'Muhammad Sajid';
 
 export const USER_ROLES = ['admin', 'user'] as const;
 export type Role = (typeof USER_ROLES)[number];

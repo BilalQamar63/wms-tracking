@@ -28,6 +28,7 @@ interface Props {
   register: UseFormRegister<PermitInput>;
   setValue: UseFormSetValue<PermitInput>;
   errors: FieldErrors<PermitInput>;
+  assignedSubContractor?: string;
 }
 
 function FieldControl({
@@ -35,11 +36,13 @@ function FieldControl({
   register,
   setValue,
   invalid,
+  assignedSubContractor,
 }: {
   field: PermitFieldDef;
   register: Props['register'];
   setValue: Props['setValue'];
   invalid: boolean;
+  assignedSubContractor?: string;
 }) {
   const name = field.key as keyof PermitInput;
   const id = `permit-${field.key}`;
@@ -63,6 +66,14 @@ function FieldControl({
         </div>
       );
     case 'select':
+      if (field.key === 'subContractor' && assignedSubContractor) {
+        return (
+          <>
+            <input type="hidden" {...register(name)} />
+            <Input id={id} value={assignedSubContractor} readOnly />
+          </>
+        );
+      }
       return (
         <Select
           id={id}
@@ -109,7 +120,7 @@ function FieldControl({
             if (field.key === 'planValidStartDate') {
               setValue(
                 'planValidEndDate',
-                event.target.value ? addDaysToYmd(event.target.value, 13) : '',
+                event.target.value ? addDaysToYmd(event.target.value, 14) : '',
                 {
                   shouldDirty: true,
                   shouldValidate: true,
@@ -138,7 +149,13 @@ function FieldControl({
 }
 
 /** Renders every register field, grouped by section – generated from the shared field config. */
-export function PermitFormFields({ control, register, setValue, errors }: Props) {
+export function PermitFormFields({
+  control,
+  register,
+  setValue,
+  errors,
+  assignedSubContractor,
+}: Props) {
   const planStartDate = useWatch({ control, name: 'planValidStartDate' });
   const planEndDate = useWatch({ control, name: 'planValidEndDate' });
   const planDuration =
@@ -187,6 +204,7 @@ export function PermitFormFields({ control, register, setValue, errors }: Props)
                         register={register}
                         setValue={setValue}
                         invalid={!!error}
+                        assignedSubContractor={assignedSubContractor}
                       />
                     )}
                   </FormField>
