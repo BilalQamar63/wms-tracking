@@ -27,7 +27,8 @@ export const SUB_CONTRACTORS = [
   'DESCON',
   'SINOPIC H.L',
   'STECON',
-  'TARGET-PL'
+  'TARGET-PL',
+  'JV',
 ] as const;
 
 export const DISCIPLINES = [
@@ -41,7 +42,6 @@ export const DISCIPLINES = [
   'Lifting',
   'Mechanical',
   'Pipeline',
-  'JV-TR/NMDC'
 ] as const;
 
 export const PTW_TYPES = [
