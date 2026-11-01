@@ -97,7 +97,7 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
           <EmptyState title="Could not load dashboard">{error.message}</EmptyState>
         ) : (
           <>
-            <div className="grid gap-4 grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-2">
               <DashboardStatCard
                 label="Main Contractors"
                 value={data?.mainContractors}

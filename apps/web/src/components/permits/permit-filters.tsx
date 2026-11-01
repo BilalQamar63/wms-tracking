@@ -122,22 +122,34 @@ export function PermitFilters({ value, onChange }: Props) {
           onChange={(e) => set('fieldValue', e.target.value)}
         />
       )}
-      <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-4">
-        <Input
-          type="date"
-          aria-label="Closed from"
-          value={value.dateFrom}
-          onChange={(e) => set('dateFrom', e.target.value)}
-        />
-        <span className="text-xs text-slate-400">to</span>
-        <Input
-          type="date"
-          aria-label="Closed to"
-          value={value.dateTo}
-          onChange={(e) => set('dateTo', e.target.value)}
-        />
+      <div className="grid min-w-0 grid-cols-1 items-end gap-3 sm:col-span-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:col-span-3 xl:col-span-4">
+        <label className="min-w-0 space-y-1">
+          <span className="block text-xs font-medium text-slate-500">Closed from</span>
+          <Input
+            type="date"
+            aria-label="Closed from"
+            className="min-w-0 px-2 sm:px-3"
+            value={value.dateFrom}
+            onChange={(e) => set('dateFrom', e.target.value)}
+          />
+        </label>
+        <label className="min-w-0 space-y-1">
+          <span className="block text-xs font-medium text-slate-500">Closed to</span>
+          <Input
+            type="date"
+            aria-label="Closed to"
+            className="min-w-0 px-2 sm:px-3"
+            value={value.dateTo}
+            onChange={(e) => set('dateTo', e.target.value)}
+          />
+        </label>
         {dirty && (
-          <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_PERMIT_FILTERS)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="justify-self-start sm:justify-self-auto"
+            onClick={() => onChange(EMPTY_PERMIT_FILTERS)}
+          >
             <X className="h-4 w-4" /> Clear
           </Button>
         )}

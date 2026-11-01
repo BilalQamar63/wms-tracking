@@ -20,14 +20,14 @@ export function PermitColumnPicker({ selectedFields, onChange }: Props) {
   }
 
   return (
-    <details className="relative border-b border-slate-200 px-4 py-3">
-      <summary className="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+    <details className="relative min-w-0 border-b border-slate-200 px-3 py-3 sm:px-4">
+      <summary className="inline-flex max-w-full cursor-pointer list-none items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
         Table fields ({selectedFields.length}/{ALL_TABLE_FIELDS.length})
       </summary>
-      <div className="absolute left-4 z-20 mt-2 max-h-[28rem] w-80 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-        <div className="mb-3 flex justify-between gap-2 border-b border-slate-100 pb-3">
+      <div className="absolute left-2 right-2 z-20 mt-2 max-h-[70dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg sm:left-4 sm:right-auto sm:max-h-[28rem] sm:w-80">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <span className="text-sm font-semibold text-slate-800">Fields shown in table</span>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-3">
             <button
               type="button"
               className="text-xs font-medium text-brand-700 hover:text-brand-900"

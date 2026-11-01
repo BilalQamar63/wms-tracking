@@ -66,14 +66,14 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
       />
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-          <div className="inline-flex rounded-lg bg-slate-100 p-1">
+        <div className="flex flex-col items-stretch justify-between gap-3 border-b border-slate-200 p-3 sm:flex-row sm:items-center sm:p-4">
+          <div className="inline-flex max-w-full overflow-x-auto rounded-lg bg-slate-100 p-1">
             {TABS.map((tab) => (
               <button
                 key={tab.value}
                 onClick={() => setFilters((f) => ({ ...f, kind: tab.value }))}
                 className={cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium',
+                  'shrink-0 rounded-md px-3 py-1.5 text-sm font-medium',
                   filters.kind === tab.value
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700',
@@ -83,11 +83,11 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Input
               type="date"
               aria-label="From date"
-              className="w-40"
+              className="min-w-0 flex-1 sm:w-40 sm:flex-none"
               value={filters.dateFrom}
               onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
             />
@@ -95,7 +95,7 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
             <Input
               type="date"
               aria-label="To date"
-              className="w-40"
+              className="min-w-0 flex-1 sm:w-40 sm:flex-none"
               value={filters.dateTo}
               onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
             />

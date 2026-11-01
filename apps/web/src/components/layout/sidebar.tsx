@@ -25,22 +25,22 @@ export function Sidebar({ user }: { user: SessionUser }) {
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-      <div className="flex h-16 items-center gap-2 border-b border-slate-200 px-5">
+    <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white md:min-h-screen md:w-64 md:border-b-0 md:border-r">
+      <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-4 md:h-16 md:px-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
           W
         </div>
         <span className="font-semibold text-slate-900">WMS Tracking</span>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex gap-1 overflow-x-auto p-2 md:flex-1 md:flex-col md:gap-1 md:overflow-visible md:p-3">
         {NAV.filter((item) => !item.adminOnly || user.role === 'admin').map(
           ({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
                 pathname.startsWith(href)
                   ? 'bg-brand-50 text-brand-700'
                   : 'text-slate-600 hover:bg-slate-100',
@@ -53,15 +53,17 @@ export function Sidebar({ user }: { user: SessionUser }) {
         )}
       </nav>
 
-      <div className="border-t border-slate-200 p-4">
-        <p className="truncate text-sm font-medium text-slate-900">{user.name}</p>
-        <p className="truncate text-xs text-slate-500">{user.email}</p>
-        {user.assignedSubContractor && (
-          <p className="mt-1 truncate text-xs text-slate-500">{user.assignedSubContractor}</p>
-        )}
+      <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 md:block md:p-4">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-slate-900">{user.name}</p>
+          <p className="truncate text-xs text-slate-500">{user.email}</p>
+          {user.assignedSubContractor && (
+            <p className="mt-1 truncate text-xs text-slate-500">{user.assignedSubContractor}</p>
+          )}
+        </div>
         <button
           onClick={logout}
-          className="mt-3 flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900"
+          className="flex shrink-0 items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 md:mt-3 md:px-0"
         >
           <LogOut className="h-4 w-4" /> Sign out
         </button>
