@@ -33,7 +33,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white md:min-h-screen md:w-64 md:border-b-0 md:border-r">
+    <aside className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white md:sticky md:top-0 md:h-screen md:min-h-0 md:w-64 md:self-start md:border-b-0 md:border-r">
       <div className="flex h-14 items-center gap-2 border-b border-slate-200 px-4 md:h-16 md:px-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
           W
@@ -41,7 +41,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
         <span className="font-semibold text-slate-900">WMS Tracking</span>
       </div>
 
-      <nav className="flex gap-1 overflow-x-auto p-2 md:flex-1 md:flex-col md:gap-1 md:overflow-visible md:p-3">
+      <nav className="flex gap-1 overflow-x-auto p-2 md:min-h-0 md:flex-1 md:flex-col md:gap-1 md:overflow-y-auto md:overflow-x-hidden md:p-3">
         {NAV.filter((item) => !item.adminOnly || user.role === 'admin').map(
           ({ href, label, icon: Icon }) => (
             <Link

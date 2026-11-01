@@ -229,7 +229,7 @@ export function PermitFormFields({
             (field.type !== 'computed' || field.key === 'ptwValidity'),
         );
         return (
-          <fieldset key={section.id}>
+          <fieldset key={section.id} className="border-b-2 border-slate-200 pb-6">
             <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
               {section.title}
             </legend>
