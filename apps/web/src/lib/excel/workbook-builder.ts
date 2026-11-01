@@ -230,7 +230,7 @@ export async function buildPermitWorkbook(
         cell.dataValidation = {
           type: 'list',
           allowBlank: true,
-          showErrorMessage: field.type !== 'multiselect',
+          showErrorMessage: field.type !== 'multiselect' && !field.contactRole,
           errorStyle: 'stop',
           errorTitle: 'Invalid value',
           error: `Please choose a value from the list for "${field.header}".`,

@@ -14,6 +14,7 @@ import {
   type PermitInput,
   type PermitQuery,
   type PermitRegisterSummaryDTO,
+  type ApprovalContactRole,
   type SessionUser,
 } from '@wms/shared';
 import { assignedSubContractorFor } from '@/lib/auth/permissions';
@@ -29,6 +30,8 @@ import type { ParsedPermitRow } from '@/lib/excel/workbook-parser';
 import {
   assertPermitApprovalContacts,
   createApprovalContactSelectionValidator,
+  ensureImportedApprovalContact,
+  ensureImportedPermitApprovalContacts,
 } from './approval-contact.service';
 
 const POPULATE = [
@@ -490,19 +493,20 @@ export async function applyReviewedImport(
     throw badRequest('A permit row cannot be selected as both an update and a new permit');
   }
 
-  const validateContactSelection = createApprovalContactSelectionValidator();
   const operations: Record<string, unknown>[] = [];
+  const approvalContactsForRows: PermitInput[] = [];
+  const approvalContactsForUpdates: Array<{
+    role: ApprovalContactRole;
+    value: string;
+    subContractor: string | undefined;
+  }> = [];
   for (const preview of previewRows) {
     const parsedRow = parsedByNumber.get(preview.rowNumber);
     if (!parsedRow) continue;
 
     if (preview.action === 'add') {
       if (!selectedAdds.has(preview.rowNumber)) continue;
-      await assertPermitApprovalContacts(
-        parsedRow.data,
-        parsedRow.data.subContractor,
-        validateContactSelection,
-      );
+      approvalContactsForRows.push(parsedRow.data);
       operations.push({
         insertOne: {
           document: {
@@ -549,11 +553,11 @@ export async function applyReviewedImport(
         throw badRequest(`Field "${field.header}" has no incoming value`);
       }
       if (field.contactRole && typeof value === 'string') {
-        await validateContactSelection(
-          field.contactRole,
-          parsedRow.data.subContractor ?? existingPermit.subContractor,
+        approvalContactsForUpdates.push({
+          role: field.contactRole,
           value,
-        );
+          subContractor: parsedRow.data.subContractor ?? existingPermit.subContractor,
+        });
       }
       set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;
       expectedCurrentValues[field.key] = existingPermit[field.key as keyof PermitDoc] ?? null;
@@ -569,6 +573,17 @@ export async function applyReviewedImport(
         },
       },
     });
+  }
+
+  for (const input of approvalContactsForRows) {
+    await ensureImportedPermitApprovalContacts(input);
+  }
+  for (const contact of approvalContactsForUpdates) {
+    await ensureImportedApprovalContact(
+      contact.role,
+      contact.value,
+      contact.subContractor,
+    );
   }
 
   const insertOperations = operations.filter((operation) => 'insertOne' in operation);

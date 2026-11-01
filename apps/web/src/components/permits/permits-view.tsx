@@ -417,6 +417,9 @@ export function PermitsView({
             setFilters(EMPTY_PERMIT_FILTERS);
             setPage(1);
             mutate((key) => typeof key === 'string' && key.startsWith('/api/permits'));
+            mutate(
+              (key) => typeof key === 'string' && key.startsWith('/api/approval-contacts'),
+            );
             mutate('/api/permits/summary');
             if (canManage) refreshFileHistory();
           }}

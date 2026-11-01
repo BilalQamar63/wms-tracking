@@ -61,6 +61,77 @@ export async function createApprovalContact(
   return toApprovalContactDTO(doc.toObject() as ApprovalContactDoc);
 }
 
+export function parseApprovalContactValue(value: string): { name: string; phone: string } | null {
+  const separator = value.lastIndexOf(' - ');
+  const name = separator < 0 ? '' : value.slice(0, separator).trim();
+  const phone = separator < 0 ? '' : value.slice(separator + 3).trim();
+  if (!name || !phone) return null;
+  return { name, phone };
+}
+
+export function assertImportedApprovalContactValues(input: PermitInput): void {
+  for (const field of PERMIT_FIELD_LIST) {
+    if (!field.contactRole) continue;
+    const value = input[field.key as keyof PermitInput];
+    if (typeof value !== 'string' || !value) continue;
+    if (!parseApprovalContactValue(value)) {
+      throw badRequest(`${field.header} must be formatted as "Name - mobile number"`);
+    }
+    if (!input.subContractor) {
+      throw badRequest(`Select a sub contractor before importing ${field.header}`);
+    }
+  }
+}
+
+export function normalizeImportedApprovalContactValues(input: PermitInput): PermitInput {
+  const normalized = { ...input };
+  for (const field of PERMIT_FIELD_LIST) {
+    if (!field.contactRole) continue;
+    const value = input[field.key as keyof PermitInput];
+    if (typeof value !== 'string' || !value) continue;
+    const parsed = parseApprovalContactValue(value);
+    if (!parsed) continue;
+    const displayValue = `${parsed.name} - ${parsed.phone}`;
+    if (field.key === 'performingAuthority') normalized.performingAuthority = displayValue;
+    else if (field.key === 'validationBy') normalized.validationBy = displayValue;
+    else if (field.key === 'approvedBy') normalized.approvedBy = displayValue;
+  }
+  return normalized;
+}
+
+export async function ensureImportedApprovalContact(
+  role: ApprovalContactRole,
+  displayValue: string,
+  subContractor: string | undefined,
+): Promise<void> {
+  if (!subContractor) {
+    throw badRequest(`Select a sub contractor before importing ${role}`);
+  }
+  const parsed = parseApprovalContactValue(displayValue);
+  if (!parsed) {
+    throw badRequest('Approval contacts must be formatted as "Name - mobile number"');
+  }
+  const { name, phone } = parsed;
+  await connectDb();
+  await assertConfiguredSubContractor(subContractor);
+  const existing = await ApprovalContactModel.exists({ role, name, phone, subContractor });
+  if (!existing) {
+    await ApprovalContactModel.create({ role, name, phone, subContractor });
+  }
+}
+
+export async function ensureImportedPermitApprovalContacts(
+  input: PermitInput,
+  subContractor = input.subContractor,
+): Promise<void> {
+  for (const field of PERMIT_FIELD_LIST) {
+    if (!field.contactRole) continue;
+    const value = input[field.key as keyof PermitInput];
+    if (typeof value !== 'string' || !value) continue;
+    await ensureImportedApprovalContact(field.contactRole, value, subContractor);
+  }
+}
+
 export async function updateApprovalContact(
   id: string,
   input: ApprovalContactInput,

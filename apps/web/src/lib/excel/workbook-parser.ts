@@ -45,6 +45,37 @@ if (CERTIFICATE_FIELD) {
 const PTWC_STATUS_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'ptwcStatus');
 if (PTWC_STATUS_FIELD) {
   HEADER_LOOKUP.set(normalizeHeader('Approved by PTWC'), PTWC_STATUS_FIELD);
+  HEADER_LOOKUP.set(normalizeHeader('Approved by Muhammad Sajid'), PTWC_STATUS_FIELD);
+}
+const PERFORMING_AUTHORITY_FIELD = PERMIT_FIELD_LIST.find(
+  (field) => field.key === 'performingAuthority',
+);
+if (PERFORMING_AUTHORITY_FIELD) {
+  HEADER_LOOKUP.set(normalizeHeader('Performing Authority'), PERFORMING_AUTHORITY_FIELD);
+}
+const VALIDATION_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'validationBy');
+if (VALIDATION_FIELD) {
+  for (const header of ['Validate', 'Validation', 'Validation By', 'Validated By']) {
+    HEADER_LOOKUP.set(normalizeHeader(header), VALIDATION_FIELD);
+  }
+}
+const APPROVAL_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'approvedBy');
+if (APPROVAL_FIELD) {
+  for (const header of ['Approval', 'Approved By']) {
+    HEADER_LOOKUP.set(normalizeHeader(header), APPROVAL_FIELD);
+  }
+}
+const PMC_ENDORSEMENT_FIELD = PERMIT_FIELD_LIST.find(
+  (field) => field.key === 'approvedEndorsementByPmc',
+);
+if (PMC_ENDORSEMENT_FIELD) {
+  for (const header of [
+    'Endorsement Approval (PMC)',
+    'Approved Endorsement by PMC',
+    'Approved Endorsement By PMC',
+  ]) {
+    HEADER_LOOKUP.set(normalizeHeader(header), PMC_ENDORSEMENT_FIELD);
+  }
 }
 const COMPANY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'company');
 if (COMPANY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Company'), COMPANY_FIELD);
@@ -242,7 +273,17 @@ export async function parsePermitWorkbook(
       );
     }
 
-    const parsed = createPermitInputSchema(optionOverrides).safeParse(candidate);
+    const rowOptions = { ...optionOverrides };
+    for (const field of PERMIT_FIELD_LIST) {
+      if (!field.contactRole) continue;
+      const value = candidate[field.key];
+      if (typeof value !== 'string' || !value) continue;
+      rowOptions[field.key] = [
+        ...new Set([...(optionOverrides?.[field.key] ?? []), value]),
+      ];
+    }
+
+    const parsed = createPermitInputSchema(rowOptions).safeParse(candidate);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         const field = PERMIT_FIELD_LIST.find((f) => f.key === issue.path[0]);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, type ChangeEvent } from 'react';
+import { useEffect, useMemo, type ChangeEvent } from 'react';
 import {
   useWatch,
   type Control,
@@ -27,6 +27,12 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils/cn';
 
+function normalizeContactValue(value: string): string {
+  const separator = value.lastIndexOf(' - ');
+  if (separator < 0) return value;
+  return `${value.slice(0, separator).trim()} - ${value.slice(separator + 3).trim()}`;
+}
+
 interface Props {
   control: Control<PermitInput>;
   register: UseFormRegister<PermitInput>;
@@ -42,8 +48,10 @@ function FieldControl({
   invalid,
   assignedSubContractor,
   hasSubContractor,
+  contactValue,
   contacts,
   contactsLoading,
+  contactsValidating,
   contactsError,
   dropdownValues,
 }: {
@@ -53,8 +61,10 @@ function FieldControl({
   invalid: boolean;
   assignedSubContractor?: string;
   hasSubContractor: boolean;
+  contactValue?: string;
   contacts?: ApprovalContactDTO[];
   contactsLoading: boolean;
+  contactsValidating: boolean;
   contactsError?: Error;
   dropdownValues?: PermitDropdownValues;
 }) {
@@ -98,6 +108,7 @@ function FieldControl({
             disabled={!hasSubContractor || contactsLoading || !!contactsError}
             invalid={invalid}
             {...register(name)}
+            value={contactValue ?? ''}
           />
         );
       }
@@ -190,9 +201,14 @@ export function PermitFormFields({
   const performingAuthority = useWatch({ control, name: 'performingAuthority' });
   const validationBy = useWatch({ control, name: 'validationBy' });
   const approvedBy = useWatch({ control, name: 'approvedBy' });
+  const contactValues = useMemo(
+    () => ({ performingAuthority, validationBy, approvedBy }),
+    [performingAuthority, validationBy, approvedBy],
+  );
   const {
     data: contacts,
     isLoading: contactsLoading,
+    isValidating: contactsValidating,
     error: contactsError,
   } = useApprovalContacts(subContractor || undefined, Boolean(subContractor));
   const { data: dropdownValues, error: dropdownValuesError } = useDropdownValues();
@@ -200,25 +216,35 @@ export function PermitFormFields({
     planStartDate && planEndDate ? getPlanDurationDays(planStartDate, planEndDate) : null;
 
   useEffect(() => {
-    if (!contacts) return;
-    const values = { performingAuthority, validationBy, approvedBy };
+    if (!contacts || contactsLoading || contactsValidating) return;
     for (const field of PERMIT_FIELD_LIST) {
       if (!field.contactRole) continue;
-      const current = values[field.key as keyof typeof values];
-      if (
-        current &&
-        !contacts.some(
-          (contact) =>
-            contact.role === field.contactRole && contact.displayValue === current,
-        )
-      ) {
+      const current = contactValues[field.key as keyof typeof contactValues];
+      if (!current) continue;
+      const matchingContact = contacts.find(
+        (contact) =>
+          contact.role === field.contactRole &&
+          normalizeContactValue(contact.displayValue) === normalizeContactValue(current),
+      );
+      if (!matchingContact) {
         setValue(field.key as keyof PermitInput, '', {
           shouldDirty: true,
           shouldValidate: true,
         });
+      } else if (matchingContact.displayValue !== current) {
+        setValue(field.key as keyof PermitInput, matchingContact.displayValue, {
+          shouldDirty: false,
+          shouldValidate: false,
+        });
       }
     }
-  }, [contacts, performingAuthority, validationBy, approvedBy, setValue]);
+  }, [
+    contacts,
+    contactsLoading,
+    contactsValidating,
+    contactValues,
+    setValue,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -275,8 +301,14 @@ export function PermitFormFields({
                         invalid={!!error}
                         assignedSubContractor={assignedSubContractor}
                         hasSubContractor={!!subContractor}
+                        contactValue={
+                          field.contactRole
+                            ? contactValues[field.key as keyof typeof contactValues]
+                            : undefined
+                        }
                         contacts={contacts}
                         contactsLoading={contactsLoading}
+                        contactsValidating={contactsValidating}
                         contactsError={contactsError}
                         dropdownValues={dropdownValues}
                       />

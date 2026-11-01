@@ -29,8 +29,8 @@ const CONFIGURABLE_FIELDS = PERMIT_FIELD_LIST.filter(
 );
 const ROLE_LABELS: Record<ApprovalContactRole, string> = {
   performingAuthority: 'Performing Authority',
-  validationBy: 'Validation By',
-  approvedBy: 'Approved By',
+  validationBy: 'Validate',
+  approvedBy: 'Approval',
 };
 
 export function DropdownValuesView() {

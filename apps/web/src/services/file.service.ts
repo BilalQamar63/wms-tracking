@@ -30,8 +30,8 @@ import type { PermitFilters, PermitImportDayDTO } from '@wms/shared';
 import { PermitModel } from '@/models/Permit';
 import { getPermitDropdownValues } from './dropdown-values.service';
 import {
-  assertPermitApprovalContacts,
-  createApprovalContactSelectionValidator,
+  assertImportedApprovalContactValues,
+  normalizeImportedApprovalContactValues,
 } from './approval-contact.service';
 
 const POPULATE = { path: 'createdBy', select: 'name isDeleted assignedSubContractor' };
@@ -145,7 +145,6 @@ async function parseImportFile(file: File, user: SessionUser) {
   assertValidImportFile(file);
   const buffer = Buffer.from(await file.arrayBuffer());
   const parsed = await parsePermitWorkbook(buffer, await getPermitDropdownValues());
-  const validateContact = createApprovalContactSelectionValidator();
   const rows: typeof parsed.rows = [];
   const contactErrors: ImportPreviewDTO['errors'] = [];
   const assignedSubContractor = assignedSubContractorFor(user);
@@ -158,12 +157,8 @@ async function parseImportFile(file: File, user: SessionUser) {
       continue;
     }
     try {
-      await assertPermitApprovalContacts(
-        row.data,
-        row.data.subContractor,
-        validateContact,
-      );
-      rows.push(row);
+      assertImportedApprovalContactValues(row.data);
+      rows.push({ ...row, data: normalizeImportedApprovalContactValues(row.data) });
     } catch (error) {
       if (!(error instanceof AppError) || error.status !== 400) throw error;
       contactErrors.push({ row: row.rowNumber, messages: [error.message] });
