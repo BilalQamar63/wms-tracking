@@ -23,6 +23,12 @@ export const SUB_CONTRACTORS = [
   'NMDC INFRA',
   'AL SHOUMUKH',
   'BORGE',
+  'CANAL',
+  'DESCON',
+  'DOGLAS',
+  'SINOPIC H.L',
+  'STECON',
+  'TARGET-PL'
 ] as const;
 
 export const DISCIPLINES = [
@@ -35,6 +41,8 @@ export const DISCIPLINES = [
   'Steel Structure',
   'Lifting',
   'Mechanical',
+  'Pipeline',
+  'JV-TR/NMDC'
 ] as const;
 
 export const PTW_TYPES = [
