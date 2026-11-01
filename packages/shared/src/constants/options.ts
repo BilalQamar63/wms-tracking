@@ -25,7 +25,6 @@ export const SUB_CONTRACTORS = [
   'BORGE',
   'CANAL',
   'DESCON',
-  'DOGLAS',
   'SINOPIC H.L',
   'STECON',
   'TARGET-PL'
