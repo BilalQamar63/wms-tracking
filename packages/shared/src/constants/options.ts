@@ -28,7 +28,7 @@ export const SUB_CONTRACTORS = [
   'SINOPIC H.L',
   'STECON',
   'TARGET-PL',
-  'JV',
+  'JV-TR/NMDC',
 ] as const;
 
 export const DISCIPLINES = [
