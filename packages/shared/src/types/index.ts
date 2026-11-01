@@ -1,5 +1,14 @@
 import type { PermitFieldKey } from '../constants/permit-fields';
-import type { Role } from '../constants/options';
+import type { ApprovalContactRole, Role } from '../constants/options';
+
+export interface ApprovalContactDTO {
+  id: string;
+  role: ApprovalContactRole;
+  name: string;
+  phone: string;
+  subContractor: string;
+  displayValue: string;
+}
 
 /** Form / API payload; dates are `YYYY-MM-DD`, and certificates can be selected in multiples. */
 export type PermitInput = {

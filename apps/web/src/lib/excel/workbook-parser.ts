@@ -6,11 +6,12 @@ import {
   PTWC_APPROVER_NAME,
   SR_NO_HEADER,
   addDaysToYmd,
+  createPermitInputSchema,
   parseFlexibleDate,
-  permitInputSchema,
   type ImportRowError,
   type PermitInput,
 } from '@wms/shared';
+import type { PermitDropdownValues } from '@/services/dropdown-values.service';
 import { badRequest } from '@/lib/http/errors';
 import { LISTS_SHEET_NAME, MAX_IMPORT_ROWS } from './constants';
 
@@ -152,7 +153,10 @@ function findHeaderRow(sheet: ExcelJS.Worksheet): { row: number; columns: Map<nu
 }
 
 /** Parses a register workbook into validated permit rows plus per-row error messages. */
-export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> {
+export async function parsePermitWorkbook(
+  buffer: Buffer,
+  optionOverrides?: PermitDropdownValues,
+): Promise<ParseResult> {
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
@@ -187,22 +191,27 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
         const ymd = parseFlexibleDate(primitive instanceof Date ? primitive : text);
         if (ymd) candidate[field.key] = ymd;
         else messages.push(`${field.header}: "${text}" is not a valid date`);
-      } else if (field.type === 'multiselect' && field.options) {
+      } else if (field.type === 'multiselect' && (optionOverrides?.[field.key] ?? field.options)) {
+        const options = optionOverrides?.[field.key] ?? field.options ?? [];
         const values = text
           .split(/[;|,\r\n]+/)
-          .map((option) => canonicalOption(option.trim(), field.options ?? []))
+          .map((option) => canonicalOption(option.trim(), options))
           .filter(Boolean);
         const existing = candidate[field.key];
         candidate[field.key] = [
           ...new Set([...(Array.isArray(existing) ? existing : []), ...values]),
         ];
-      } else if ((field.type === 'select' || field.type === 'radio') && field.options) {
+      } else if (
+        (field.type === 'select' || field.type === 'radio') &&
+        (optionOverrides?.[field.key] ?? field.options)?.length
+      ) {
+        const options = optionOverrides?.[field.key] ?? field.options ?? [];
         const normalized =
           field.key === 'ptwcStatus'
-            ? canonicalPtwcStatus(text, field.options)
-            : canonicalOption(text, field.options);
+            ? canonicalPtwcStatus(text, options)
+            : canonicalOption(text, options);
         candidate[field.key] =
-          field.key === 'company' && field.defaultValue && !field.options.includes(normalized)
+          field.key === 'company' && field.defaultValue && !options.includes(normalized)
             ? field.defaultValue
             : normalized;
       } else {
@@ -233,7 +242,7 @@ export async function parsePermitWorkbook(buffer: Buffer): Promise<ParseResult> 
       );
     }
 
-    const parsed = permitInputSchema.safeParse(candidate);
+    const parsed = createPermitInputSchema(optionOverrides).safeParse(candidate);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         const field = PERMIT_FIELD_LIST.find((f) => f.key === issue.path[0]);

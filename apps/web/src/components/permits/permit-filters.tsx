@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { useDropdownValues } from '@/hooks/use-dropdown-values';
 import { EMPTY_PERMIT_FILTERS, type PermitFilterState } from '@/hooks/use-permits';
 
 interface Props {
@@ -26,6 +27,7 @@ export function PermitFilters({ value, onChange }: Props) {
     onChange({ ...value, [key]: v });
   const dirty = JSON.stringify(value) !== JSON.stringify(EMPTY_PERMIT_FILTERS);
   const field = PERMIT_FIELD_LIST.find((item) => item.key === value.fieldKey);
+  const { data: dropdownValues } = useDropdownValues();
 
   return (
     <div className="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
@@ -49,42 +51,42 @@ export function PermitFilters({ value, onChange }: Props) {
       <Select
         aria-label="Department"
         placeholder="All departments"
-        options={DEPARTMENTS}
+        options={dropdownValues?.department ?? DEPARTMENTS}
         value={value.department}
         onChange={(e) => set('department', e.target.value)}
       />
       <Select
         aria-label="Discipline"
         placeholder="All disciplines"
-        options={DISCIPLINES}
+        options={dropdownValues?.discipline ?? DISCIPLINES}
         value={value.discipline}
         onChange={(e) => set('discipline', e.target.value)}
       />
       <Select
         aria-label="Plant"
         placeholder="All plants"
-        options={PLANT_DIVISIONS}
+        options={dropdownValues?.plantDivision ?? PLANT_DIVISIONS}
         value={value.plantDivision}
         onChange={(e) => set('plantDivision', e.target.value)}
       />
       <Select
         aria-label="Main contractor"
         placeholder="All main contractors"
-        options={MAIN_CONTRACTORS}
+        options={dropdownValues?.company ?? MAIN_CONTRACTORS}
         value={value.company}
         onChange={(e) => set('company', e.target.value)}
       />
       <Select
         aria-label="Sub contractor"
         placeholder="All sub contractors"
-        options={SUB_CONTRACTORS}
+        options={dropdownValues?.subContractor ?? SUB_CONTRACTORS}
         value={value.subContractor}
         onChange={(e) => set('subContractor', e.target.value)}
       />
       <Select
         aria-label="New PTW Type"
         placeholder="All new PTW types"
-        options={PTW_TYPES}
+        options={dropdownValues?.newPtwType ?? PTW_TYPES}
         value={value.ptwType}
         onChange={(e) => set('ptwType', e.target.value)}
       />
@@ -105,11 +107,11 @@ export function PermitFilters({ value, onChange }: Props) {
           value={value.fieldValue}
           onChange={(e) => set('fieldValue', e.target.value)}
         />
-      ) : field?.options ? (
+      ) : field?.options || (field && dropdownValues?.[field.key]) ? (
         <Select
           aria-label={`Filter ${field.header}`}
           placeholder={`All ${field.header.toLowerCase()}`}
-          options={field.options}
+          options={dropdownValues?.[field.key] ?? field.options ?? []}
           value={value.fieldValue}
           onChange={(e) => set('fieldValue', e.target.value)}
         />

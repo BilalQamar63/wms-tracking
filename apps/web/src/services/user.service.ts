@@ -7,6 +7,7 @@ import { FileRecordModel } from '@/models/FileRecord';
 import { PermitModel } from '@/models/Permit';
 import { UserModel, type UserDoc } from '@/models/User';
 import { hashPassword } from './auth.service';
+import { assertConfiguredSubContractor } from './dropdown-values.service';
 
 async function countActiveAdmins(excludeId?: string): Promise<number> {
   return UserModel.countDocuments({
@@ -47,6 +48,7 @@ export async function listUsers(): Promise<UserDTO[]> {
 
 export async function createUser(input: CreateUserInput): Promise<UserDTO> {
   await connectDb();
+  if (input.role === 'user') await assertConfiguredSubContractor(input.assignedSubContractor);
   await assertEmailAvailable(input.email);
   const doc = await UserModel.create({
     name: input.name,
@@ -61,6 +63,7 @@ export async function createUser(input: CreateUserInput): Promise<UserDTO> {
 
 export async function updateUser(id: string, input: UpdateUserInput, actor: SessionUser): Promise<UserDTO> {
   await connectDb();
+  if (input.role === 'user') await assertConfiguredSubContractor(input.assignedSubContractor);
   const target = await findLiveUser(id);
   await assertEmailAvailable(input.email, id);
 

@@ -17,6 +17,7 @@ import { toPermitDTO } from '@/lib/mappers';
 import { escapeRegex } from '@/lib/utils/object-id';
 import { timestampForFileName, sanitizeFileName } from '@/lib/utils/file-name';
 import { FileRecordModel } from '@/models/FileRecord';
+import { getPermitDropdownValues } from './dropdown-values.service';
 import { PermitModel } from '@/models/Permit';
 
 export type CompanyExportStatus = 'all' | 'active' | 'closed' | 'overdue';
@@ -254,7 +255,7 @@ export async function exportCompanyPermits(
   ]);
   const permits = docs.map(toPermitDTO);
   if (permits.length === 0) throw badRequest('No permits found for the selected filters');
-  const buffer = await buildPermitWorkbook(permits, fieldKeys);
+  const buffer = await buildPermitWorkbook(permits, fieldKeys, await getPermitDropdownValues());
   const fileName = `PTW-${sanitizeFileName(mainContractor)}-${sanitizeFileName(subContractor)}-${exportStatus}_${timestampForFileName()}.xlsx`;
 
   await FileRecordModel.create({

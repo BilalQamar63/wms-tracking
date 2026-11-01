@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { permitInputSchema, permitQuerySchema } from '@wms/shared';
+import { createPermitInputSchema, permitQuerySchema } from '@wms/shared';
 import { requireUser } from '@/lib/auth/session';
 import { forbidden } from '@/lib/http/errors';
 import { created, ok, route, searchParamsToObject } from '@/lib/http/response';
 import { createPermit, listPermits } from '@/services/permit.service';
+import { getPermitDropdownValues } from '@/services/dropdown-values.service';
 
 const createPermitRequestSchema = z
   .object({
@@ -32,6 +33,6 @@ export const POST = route(async (req) => {
   if (user.role !== 'admin' && body.importBatchId) {
     throw forbidden('Administrator access required');
   }
-  const input = permitInputSchema.parse(body);
+  const input = createPermitInputSchema(await getPermitDropdownValues()).parse(body);
   return created(await createPermit(input, user, body.importBatchId));
 });

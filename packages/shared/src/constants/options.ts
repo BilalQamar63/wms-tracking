@@ -6,6 +6,13 @@ export const DEPARTMENTS = ['Construction', 'Commissioning'] as const;
 
 export const MAIN_CONTRACTORS = ['JV-TR/NMDC'] as const;
 
+export const APPROVAL_CONTACT_ROLES = [
+  'performingAuthority',
+  'validationBy',
+  'approvedBy',
+] as const;
+export type ApprovalContactRole = (typeof APPROVAL_CONTACT_ROLES)[number];
+
 export const SUB_CONTRACTORS = [
   'OQC',
   'INCOL',

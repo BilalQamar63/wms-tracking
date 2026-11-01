@@ -11,6 +11,7 @@ import {
   type PermitDTO,
   type PermitFieldKey,
 } from '@wms/shared';
+import type { PermitDropdownValues } from '@/services/dropdown-values.service';
 import {
   DATE_FORMAT,
   FIRST_DATA_ROW,
@@ -41,22 +42,25 @@ function ptwValidityFormula(startDate: string, endDate: string): string {
 function addListsSheet(
   workbook: ExcelJS.Workbook,
   fields: typeof PERMIT_FIELD_LIST,
+  optionOverrides?: PermitDropdownValues,
 ): Map<string, string> {
   const sheet = workbook.addWorksheet(LISTS_SHEET_NAME, { state: 'hidden' });
   const ranges = new Map<string, string>();
   let column = 1;
 
   for (const field of fields) {
-    if (!['select', 'radio', 'multiselect'].includes(field.type) || !field.options) continue;
+    const options = optionOverrides?.[field.key] ?? field.options;
+    if (!['select', 'radio', 'multiselect'].includes(field.type) || !options?.length)
+      continue;
     const letter = sheet.getColumn(column).letter;
     sheet.getCell(1, column).value = field.header;
-    field.options.forEach((option, index) => {
+    options.forEach((option, index) => {
       sheet.getCell(index + 2, column).value =
         field.key === 'ptwcStatus' ? `${option} by ${PTWC_APPROVER_NAME}` : option;
     });
     ranges.set(
       field.key,
-      `${LISTS_SHEET_NAME}!$${letter}$2:$${letter}$${field.options.length + 1}`,
+      `${LISTS_SHEET_NAME}!$${letter}$2:$${letter}$${options.length + 1}`,
     );
     column += 1;
   }
@@ -71,6 +75,7 @@ function addListsSheet(
 export async function buildPermitWorkbook(
   permits: PermitDTO[],
   fieldKeys?: readonly PermitFieldKey[],
+  optionOverrides?: PermitDropdownValues,
 ): Promise<Buffer> {
   const selectedFields = PERMIT_FIELD_LIST.filter(
     (field) =>
@@ -82,7 +87,7 @@ export async function buildPermitWorkbook(
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet(SHEET_NAME);
-  const lists = addListsSheet(workbook, selectedFields);
+  const lists = addListsSheet(workbook, selectedFields, optionOverrides);
   const lastColumn = selectedFields.length + 1;
 
   // Title

@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
-  SUB_CONTRACTORS,
   USER_ROLES,
   createUserSchema,
   updateUserSchema,
@@ -17,6 +16,7 @@ import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
 import { apiFetch } from '@/lib/api-client';
+import { useDropdownValues } from '@/hooks/use-dropdown-values';
 
 interface FormValues {
   name: string;
@@ -38,6 +38,7 @@ const schemaFor = (isEdit: boolean) => (isEdit ? updateUserSchema : createUserSc
 
 export function UserFormDialog({ open, user, onClose, onSaved }: Props) {
   const toast = useToast();
+  const { data: dropdownValues, error: dropdownError } = useDropdownValues();
   const isEdit = !!user;
 
   const {
@@ -130,11 +131,16 @@ export function UserFormDialog({ open, user, onClose, onSaved }: Props) {
             <Select
               id="user-sub-contractor"
               placeholder="Select a sub contractor"
-              options={SUB_CONTRACTORS}
+              options={dropdownValues?.subContractor ?? []}
               invalid={!!errors.assignedSubContractor}
               {...register('assignedSubContractor')}
             />
           </FormField>
+        )}
+        {dropdownError && (
+          <p role="alert" className="text-sm text-red-600">
+            Could not load dropdown values: {dropdownError.message}
+          </p>
         )}
       </form>
     </Modal>

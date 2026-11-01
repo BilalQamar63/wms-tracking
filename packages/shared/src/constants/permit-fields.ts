@@ -28,6 +28,7 @@ export interface PermitFieldDef {
   readonly width: number;
   readonly required?: boolean;
   readonly options?: readonly string[];
+  readonly contactRole?: 'performingAuthority' | 'validationBy' | 'approvedBy';
   readonly maxLength?: number;
   readonly defaultValue?: string;
   readonly fixedValue?: string;
@@ -285,10 +286,45 @@ export const PERMIT_FIELDS = [
     exportToExcel: false,
   },
   {
+    key: 'performingAuthority',
+    header: 'Performing Authority',
+    type: 'select',
+    section: 'validity',
+    width: 28,
+    contactRole: 'performingAuthority',
+    inTable: true,
+  },
+  {
+    key: 'validationBy',
+    header: 'Validation By',
+    type: 'select',
+    section: 'validity',
+    width: 28,
+    contactRole: 'validationBy',
+    inTable: true,
+  },
+  {
+    key: 'approvedBy',
+    header: 'Approved By',
+    type: 'select',
+    section: 'validity',
+    width: 28,
+    contactRole: 'approvedBy',
+    inTable: true,
+  },
+  {
+    key: 'approvedEndorsementByPmc',
+    header: 'Approved Endorsement by PMC',
+    type: 'text',
+    section: 'validity',
+    width: 30,
+    inTable: true,
+  },
+  {
     key: 'closedDate',
     header: 'PTW Closed Date',
     type: 'date',
-    section: 'validity',
+    section: 'closure',
     width: 16,
     inTable: true,
   },

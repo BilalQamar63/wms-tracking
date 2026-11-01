@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Building2, ClipboardList, Clock3, Divide, Users, XCircle } from 'lucide-react';
 import useSWR from 'swr';
 import { PTW_TYPES, type PermitDashboardStatsDTO, type PermitFieldKey } from '@wms/shared';
@@ -17,6 +17,7 @@ import { downloadFromApi, swrFetcher, toQueryString } from '@/lib/api-client';
 import { PermitFilters } from '../permits/permit-filters';
 import { ContractorStatsTable } from './contractor-stats-table';
 import { DashboardStatCard } from './dashboard-stat-card';
+import { useDropdownValues } from '@/hooks/use-dropdown-values';
 
 type ContractorStatusFilter = 'all' | 'active' | 'closed' | 'overdue';
 type CompanyExportStatus = ContractorStatusFilter;
@@ -31,6 +32,8 @@ const EXPORT_STATUS_OPTIONS = [
 
 export function DashboardView({ canExport }: { canExport: boolean }) {
   const toast = useToast();
+  const { data: dropdownValues } = useDropdownValues();
+  const availablePtwTypes = dropdownValues?.newPtwType ?? PTW_TYPES;
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [statusFilter, setStatusFilter] = useState<ContractorStatusFilter>('all');
   const [selectedFields, setSelectedFields] = useState<PermitFieldKey[]>(ALL_FIELD_KEYS);
@@ -42,6 +45,10 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
   const effectiveFilters = { ...filters, search: debouncedSearch };
   const statsUrl = `/api/dashboard/stats${toQueryString(effectiveFilters)}`;
   const { data, error, isLoading } = useSWR<PermitDashboardStatsDTO>(statsUrl, swrFetcher);
+
+  useEffect(() => {
+    if (dropdownValues?.newPtwType) setSelectedPtwTypes([...dropdownValues.newPtwType]);
+  }, [dropdownValues]);
 
   async function exportContractor(
     company: CompanySelection,
@@ -213,7 +220,7 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
                     setSelectedCompany({ mainContractor, subContractor });
                     setExportStatus('all');
                     setSelectedFields(ALL_FIELD_KEYS);
-                    setSelectedPtwTypes([...PTW_TYPES]);
+                    setSelectedPtwTypes([...availablePtwTypes]);
                   }}
                   exportingKey={exportingKey}
                 />
@@ -254,7 +261,7 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
                 disabled={!selectedCompany || exportingKey !== null}
                 onClick={() =>
                   selectedCompany &&
-                  exportContractor(selectedCompany, 'all', ALL_FIELD_KEYS, [...PTW_TYPES])
+                  exportContractor(selectedCompany, 'all', ALL_FIELD_KEYS, [...availablePtwTypes])
                 }
               >
                 Download full Excel
@@ -299,7 +306,7 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
                 <button
                   type="button"
                   className="text-xs font-medium text-brand-700 hover:text-brand-900"
-                  onClick={() => setSelectedPtwTypes([...PTW_TYPES])}
+                  onClick={() => setSelectedPtwTypes([...availablePtwTypes])}
                 >
                   Select all
                 </button>
@@ -312,7 +319,7 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
                 </button>
               </div>
               <div className="space-y-3">
-                {PTW_TYPES.map((ptwType) => (
+                {availablePtwTypes.map((ptwType) => (
                   <label key={ptwType} className="flex items-start gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"

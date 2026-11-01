@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ClipboardList, FileSpreadsheet, LayoutDashboard, LogOut, Users } from 'lucide-react';
+import {
+  ClipboardList,
+  FileSpreadsheet,
+  LayoutDashboard,
+  LogOut,
+  SlidersHorizontal,
+  Users,
+} from 'lucide-react';
 import type { SessionUser } from '@wms/shared';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils/cn';
@@ -12,6 +19,7 @@ const NAV = [
   { href: '/permits', label: 'PTW Register', icon: ClipboardList, adminOnly: false },
   { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: true },
   { href: '/users', label: 'Users', icon: Users, adminOnly: true },
+  { href: '/dropdown-values', label: 'Dropdown Values', icon: SlidersHorizontal, adminOnly: true },
 ] as const;
 
 export function Sidebar({ user }: { user: SessionUser }) {

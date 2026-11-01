@@ -28,8 +28,11 @@ const fieldDefinition: SchemaDefinition = Object.fromEntries(
     field.type === 'date'
       ? { type: Date }
       : field.type === 'multiselect'
-        ? { type: [String], enum: field.options }
-        : { type: String, trim: true, ...(field.options ? { enum: field.options } : {}) },
+        ? { type: [String] }
+        : {
+            type: String,
+            trim: true,
+          },
   ]),
 );
 fieldDefinition.approvedByPtwc = { type: String, trim: true };

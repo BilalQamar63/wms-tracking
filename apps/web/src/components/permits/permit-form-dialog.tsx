@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   PERMIT_FIELD_LIST,
-  permitInputSchema,
+  createPermitInputSchema,
   toDateInputValue,
   type PermitDTO,
   type PermitInput,
@@ -15,6 +15,7 @@ import { Modal } from '@/components/ui/modal';
 import { useToast } from '@/components/ui/toast';
 import { apiFetch } from '@/lib/api-client';
 import { PermitFormFields } from './permit-form-fields';
+import { useDropdownValues } from '@/hooks/use-dropdown-values';
 
 interface Props {
   open: boolean;
@@ -68,6 +69,11 @@ export function PermitFormDialog({
 }: Props) {
   const toast = useToast();
   const isEdit = !!permit;
+  const { data: dropdownValues } = useDropdownValues();
+  const validationSchema = useMemo(
+    () => createPermitInputSchema(dropdownValues),
+    [dropdownValues],
+  );
 
   const {
     control,
@@ -77,7 +83,7 @@ export function PermitFormDialog({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<PermitInput>({
-    resolver: zodResolver(permitInputSchema) as unknown as Resolver<PermitInput>,
+    resolver: zodResolver(validationSchema) as unknown as Resolver<PermitInput>,
     defaultValues: toFormValues(permit, assignedSubContractor),
   });
 

@@ -60,6 +60,22 @@ function renderCell(permit: PermitDTO, key: string, type: string, today: string)
     );
   if (!value) return <span className="text-slate-300">—</span>;
   if (type === 'date') return formatDisplayDate(value as string);
+  if (key === 'certificateType') {
+    const certificates = Array.isArray(value) ? value : [value];
+    if (certificates.length === 0) return <span className="text-slate-300">—</span>;
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {certificates.map((certificate) => (
+          <span
+            key={certificate}
+            className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800"
+          >
+            {certificate}
+          </span>
+        ))}
+      </div>
+    );
+  }
   return Array.isArray(value) ? value.join(', ') : value;
 }
 
@@ -110,19 +126,19 @@ export function PermitTable({
 
   return (
     <div ref={tableContainer} className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-slate-200 text-sm">
+      <table className="min-w-full border-2 border-slate-500 border-collapse text-sm">
         <thead className="text-xs font-semibold uppercase tracking-wide">
           <tr>
             <th
               colSpan={planningColumns + 1}
-              className={`border-b border-blue-100 px-4 py-2 text-left ${SECTION_STYLES.planning.header}`}
+              className={`border-2 border-slate-500 px-4 py-2 text-left ${SECTION_STYLES.planning.header}`}
             >
               {FORM_SECTIONS[0]?.title}
             </th>
             {validityColumns > 0 && (
               <th
                 colSpan={validityColumns}
-                className={`border-b border-amber-100 px-4 py-2 text-left ${SECTION_STYLES.validity.header}`}
+                className={`border-2 border-slate-500 px-4 py-2 text-left ${SECTION_STYLES.validity.header}`}
               >
                 {FORM_SECTIONS[1]?.title}
               </th>
@@ -130,33 +146,33 @@ export function PermitTable({
             {(closureColumns > 0 || canManage) && (
               <th
                 colSpan={closureColumns + (canManage ? 1 : 0)}
-                className={`border-b border-emerald-100 px-4 py-2 text-left ${SECTION_STYLES.closure.header}`}
+                className={`border-2 border-slate-500 px-4 py-2 text-left ${SECTION_STYLES.closure.header}`}
               >
                 {FORM_SECTIONS[2]?.title}
               </th>
             )}
           </tr>
           <tr className="bg-slate-50 text-left text-slate-500">
-            <th className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES.planning.cell}`}>Sr No</th>
+            <th className={`whitespace-nowrap border-2 border-slate-400 px-4 py-3 ${SECTION_STYLES.planning.cell}`}>Sr No</th>
             {columns.map((column) => (
               <th
                 key={column.key}
                 data-permit-column={column.key}
-                className={`whitespace-nowrap px-4 py-3 ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
+                className={`whitespace-nowrap border-2 border-slate-400 px-4 py-3 ${column.key === 'certificateType' ? 'min-w-[28rem]' : ''} ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
               >
                 {column.header}
               </th>
             ))}
             {canManage && (
-              <th className={`px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}>Actions</th>
+              <th className={`border-2 border-slate-400 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}>Actions</th>
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {permits.map((permit) => (
             <tr key={permit.id} className="hover:bg-slate-50/70">
               <td
-                className={`px-4 py-3 font-medium tabular-nums text-slate-900 ${SECTION_STYLES.planning.cell}`}
+                className={`border-2 border-slate-400 px-4 py-3 font-medium tabular-nums text-slate-900 ${SECTION_STYLES.planning.cell}`}
               >
                 {permit.srNo}
               </td>
@@ -164,14 +180,14 @@ export function PermitTable({
                 <td
                   key={column.key}
                   data-permit-column={column.key}
-                  className={`max-w-[16rem] px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'whitespace-normal break-words' : 'truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
+                  className={`border-2 border-slate-400 px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'min-w-[28rem] max-w-none whitespace-normal break-words' : 'max-w-[16rem] truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
                 >
                   {renderCell(permit, column.key, column.type, today)}
                 </td>
               ))}
               {canManage && (
                 <td
-                  className={`whitespace-nowrap px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
+                  className={`whitespace-nowrap border-2 border-slate-400 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
                 >
                   <Button
                     variant="ghost"

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChangeEvent } from 'react';
+import { useEffect, type ChangeEvent } from 'react';
 import {
   useWatch,
   type Control,
@@ -10,6 +10,7 @@ import {
 } from 'react-hook-form';
 import {
   addDaysToYmd,
+  type ApprovalContactDTO,
   FORM_SECTIONS,
   PERMIT_FIELD_LIST,
   getPlanDurationDays,
@@ -17,6 +18,9 @@ import {
   type PermitFieldDef,
   type PermitInput,
 } from '@wms/shared';
+import type { PermitDropdownValues } from '@/services/dropdown-values.service';
+import { useApprovalContacts } from '@/hooks/use-approval-contacts';
+import { useDropdownValues } from '@/hooks/use-dropdown-values';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -37,12 +41,22 @@ function FieldControl({
   setValue,
   invalid,
   assignedSubContractor,
+  hasSubContractor,
+  contacts,
+  contactsLoading,
+  contactsError,
+  dropdownValues,
 }: {
   field: PermitFieldDef;
   register: Props['register'];
   setValue: Props['setValue'];
   invalid: boolean;
   assignedSubContractor?: string;
+  hasSubContractor: boolean;
+  contacts?: ApprovalContactDTO[];
+  contactsLoading: boolean;
+  contactsError?: Error;
+  dropdownValues?: PermitDropdownValues;
 }) {
   const name = field.key as keyof PermitInput;
   const id = `permit-${field.key}`;
@@ -51,7 +65,7 @@ function FieldControl({
     case 'multiselect':
       return (
         <div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2">
-          {(field.options ?? []).map((option, index) => (
+          {(dropdownValues?.[field.key] ?? field.options ?? []).map((option, index) => (
             <label key={option} className="flex items-start gap-2 text-sm text-slate-700">
               <input
                 id={index === 0 ? id : `${id}-${index}`}
@@ -74,10 +88,23 @@ function FieldControl({
           </>
         );
       }
+      if (field.contactRole) {
+        return (
+          <Select
+            id={id}
+            options={(contacts ?? [])
+              .filter((contact) => contact.role === field.contactRole)
+              .map((contact) => contact.displayValue)}
+            disabled={!hasSubContractor || contactsLoading || !!contactsError}
+            invalid={invalid}
+            {...register(name)}
+          />
+        );
+      }
       return (
         <Select
           id={id}
-          options={field.options ?? []}
+          options={dropdownValues?.[field.key] ?? field.options ?? []}
           invalid={invalid}
           defaultValue={field.defaultValue}
           {...register(name)}
@@ -86,7 +113,7 @@ function FieldControl({
     case 'radio':
       return (
         <div className="flex flex-wrap gap-x-5 gap-y-2" role="radiogroup" aria-label={field.header}>
-          {(field.options ?? []).map((option, index) => (
+          {(dropdownValues?.[field.key] ?? field.options ?? []).map((option, index) => (
             <label key={option} className="inline-flex items-center gap-2 text-sm text-slate-700">
               <input
                 id={index === 0 ? id : `${id}-${index}`}
@@ -158,8 +185,40 @@ export function PermitFormFields({
 }: Props) {
   const planStartDate = useWatch({ control, name: 'planValidStartDate' });
   const planEndDate = useWatch({ control, name: 'planValidEndDate' });
+  const selectedSubContractor = useWatch({ control, name: 'subContractor' });
+  const subContractor = assignedSubContractor || selectedSubContractor;
+  const performingAuthority = useWatch({ control, name: 'performingAuthority' });
+  const validationBy = useWatch({ control, name: 'validationBy' });
+  const approvedBy = useWatch({ control, name: 'approvedBy' });
+  const {
+    data: contacts,
+    isLoading: contactsLoading,
+    error: contactsError,
+  } = useApprovalContacts(subContractor || undefined, Boolean(subContractor));
+  const { data: dropdownValues, error: dropdownValuesError } = useDropdownValues();
   const planDuration =
     planStartDate && planEndDate ? getPlanDurationDays(planStartDate, planEndDate) : null;
+
+  useEffect(() => {
+    if (!contacts) return;
+    const values = { performingAuthority, validationBy, approvedBy };
+    for (const field of PERMIT_FIELD_LIST) {
+      if (!field.contactRole) continue;
+      const current = values[field.key as keyof typeof values];
+      if (
+        current &&
+        !contacts.some(
+          (contact) =>
+            contact.role === field.contactRole && contact.displayValue === current,
+        )
+      ) {
+        setValue(field.key as keyof PermitInput, '', {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+    }
+  }, [contacts, performingAuthority, validationBy, approvedBy, setValue]);
 
   return (
     <div className="space-y-6">
@@ -177,13 +236,23 @@ export function PermitFormFields({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {fields.map((field) => {
                 const error = errors[field.key as keyof PermitInput]?.message;
+                const contactError =
+                  field.contactRole && contactsError
+                    ? `Could not load contacts: ${contactsError.message}`
+                    : undefined;
+                const dropdownError =
+                  ['select', 'radio', 'multiselect'].includes(field.type) &&
+                  !field.contactRole &&
+                  dropdownValuesError
+                    ? `Could not load dropdown values: ${dropdownValuesError.message}`
+                    : undefined;
                 return (
                   <FormField
                     key={field.key}
                     label={field.header}
                     htmlFor={field.type === 'computed' ? undefined : `permit-${field.key}`}
                     required={field.required}
-                    error={error}
+                    error={error ?? contactError ?? dropdownError}
                     className={cn(field.fullWidth && 'sm:col-span-2')}
                   >
                     {field.type === 'computed' ? (
@@ -205,6 +274,11 @@ export function PermitFormFields({
                         setValue={setValue}
                         invalid={!!error}
                         assignedSubContractor={assignedSubContractor}
+                        hasSubContractor={!!subContractor}
+                        contacts={contacts}
+                        contactsLoading={contactsLoading}
+                        contactsError={contactsError}
+                        dropdownValues={dropdownValues}
                       />
                     )}
                   </FormField>

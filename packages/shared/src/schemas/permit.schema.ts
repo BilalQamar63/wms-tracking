@@ -10,8 +10,12 @@ const emptyToUndefined = (value: unknown): unknown =>
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}/;
 
-function buildFieldSchema(field: PermitFieldDef): z.ZodTypeAny {
+function buildFieldSchema(
+  field: PermitFieldDef,
+  optionOverrides?: Readonly<Record<string, readonly string[]>>,
+): z.ZodTypeAny {
   let base: z.ZodTypeAny;
+  const options = optionOverrides?.[field.key] ?? field.options;
 
   if (field.fixedValue !== undefined) {
     base = z.literal(field.fixedValue, {
@@ -23,15 +27,21 @@ function buildFieldSchema(field: PermitFieldDef): z.ZodTypeAny {
   switch (field.type) {
     case 'select':
     case 'radio': {
-      const options = field.options as [string, ...string[]];
-      base = z.enum(options, {
-        errorMap: () => ({ message: `Must be one of: ${options.join(', ')}` }),
-      });
+      if (options?.length) {
+        base = z.enum(options as [string, ...string[]], {
+          errorMap: () => ({ message: `Must be one of: ${options.join(', ')}` }),
+        });
+      } else {
+        base = z.string().trim().max(field.maxLength ?? 255);
+      }
       break;
     }
     case 'multiselect': {
-      const options = field.options as [string, ...string[]];
-      base = z.array(z.enum(options)).max(options.length);
+      if (options?.length) {
+        base = z.array(z.enum(options as [string, ...string[]])).max(options.length);
+      } else {
+        base = z.array(z.string()).max(0);
+      }
       break;
     }
     case 'date':
@@ -57,43 +67,49 @@ function buildFieldSchema(field: PermitFieldDef): z.ZodTypeAny {
   return z.preprocess(emptyToUndefined, base.optional());
 }
 
-const shape = Object.fromEntries(
-  PERMIT_FIELD_LIST.map((field) => [field.key, buildFieldSchema(field)]),
-);
-
 /**
  * Validation schema for creating / replacing a permit record.
  * Used by the form (client), the REST API (server) and the Excel importer.
  */
-export const permitInputSchema = z.object(shape).superRefine((value, ctx) => {
-  const { planValidStartDate: start, planValidEndDate: end } = value as PermitInput;
-  const today = getTodayYmd();
-  for (const field of PERMIT_FIELD_LIST) {
-    if (
-      field.type === 'date' &&
-      field.key !== 'planValidStartDate' &&
-      field.key !== 'planValidEndDate' &&
-      field.key !== 'closedDate' &&
-      typeof value[field.key as keyof typeof value] === 'string' &&
-      (value[field.key as keyof typeof value] as string) > today
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [field.key],
-        message: 'Date cannot be in the future',
-      });
+export function createPermitInputSchema(
+  optionOverrides?: Readonly<Record<string, readonly string[]>>,
+) {
+  const shape = Object.fromEntries(
+    PERMIT_FIELD_LIST.map((field) => [
+      field.key,
+      buildFieldSchema(field, optionOverrides),
+    ]),
+  );
+  return z.object(shape).superRefine((value, ctx) => {
+    const { planValidStartDate: start, planValidEndDate: end } = value as PermitInput;
+    const today = getTodayYmd();
+    for (const field of PERMIT_FIELD_LIST) {
+      if (
+        field.type === 'date' &&
+        field.key !== 'planValidStartDate' &&
+        field.key !== 'planValidEndDate' &&
+        field.key !== 'closedDate' &&
+        typeof value[field.key as keyof typeof value] === 'string' &&
+        (value[field.key as keyof typeof value] as string) > today
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field.key],
+          message: 'Date cannot be in the future',
+        });
+      }
     }
-  }
-  if (start && end) {
-    if (end < start) {
+    if (start && end && end < start) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['planValidEndDate'],
         message: 'End date cannot be before the start date',
       });
     }
-  }
-}) as unknown as z.ZodType<PermitInput, z.ZodTypeDef, unknown>;
+  }) as unknown as z.ZodType<PermitInput, z.ZodTypeDef, unknown>;
+}
+
+export const permitInputSchema = createPermitInputSchema();
 
 const optionalString = z.preprocess(emptyToUndefined, z.string().trim().optional());
 const optionalDate = z.preprocess(

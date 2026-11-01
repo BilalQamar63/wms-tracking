@@ -26,6 +26,10 @@ import { reserveSequence } from '@/models/Counter';
 import { PermitModel, type PermitDoc } from '@/models/Permit';
 import { FileRecordModel } from '@/models/FileRecord';
 import type { ParsedPermitRow } from '@/lib/excel/workbook-parser';
+import {
+  assertPermitApprovalContacts,
+  createApprovalContactSelectionValidator,
+} from './approval-contact.service';
 
 const POPULATE = [
   { path: 'createdBy', select: 'name isDeleted' },
@@ -271,11 +275,13 @@ export async function createPermit(
   }
   await assertUniquePtwNumber(input.newPtwNumber, undefined, batchId);
 
-  const srNo = await reserveSequence('permit');
-  const { set } = permitInputToUpdate({
+  const scopedInput = {
     ...input,
     ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
-  });
+  };
+  await assertPermitApprovalContacts(scopedInput);
+  const srNo = await reserveSequence('permit');
+  const { set } = permitInputToUpdate(scopedInput);
   const doc = await PermitModel.create({
     ...set,
     srNo,
@@ -308,8 +314,11 @@ export async function updatePermit(
 ): Promise<PermitDTO> {
   assertObjectId(id, 'Permit');
   await connectDb();
-  const existingPermit = await PermitModel.findById(id).select('importBatchId').lean();
+  const existingPermit = await PermitModel.findById(id)
+    .select('importBatchId subContractor')
+    .lean();
   if (!existingPermit) throw notFound('Permit');
+  await assertPermitApprovalContacts(input);
   await assertUniquePtwNumber(
     input.newPtwNumber,
     id,
@@ -481,6 +490,7 @@ export async function applyReviewedImport(
     throw badRequest('A permit row cannot be selected as both an update and a new permit');
   }
 
+  const validateContactSelection = createApprovalContactSelectionValidator();
   const operations: Record<string, unknown>[] = [];
   for (const preview of previewRows) {
     const parsedRow = parsedByNumber.get(preview.rowNumber);
@@ -488,6 +498,11 @@ export async function applyReviewedImport(
 
     if (preview.action === 'add') {
       if (!selectedAdds.has(preview.rowNumber)) continue;
+      await assertPermitApprovalContacts(
+        parsedRow.data,
+        parsedRow.data.subContractor,
+        validateContactSelection,
+      );
       operations.push({
         insertOne: {
           document: {
@@ -532,6 +547,13 @@ export async function applyReviewedImport(
       const value = parsedRow.data[field.key as keyof PermitInput];
       if (value === undefined || value === '') {
         throw badRequest(`Field "${field.header}" has no incoming value`);
+      }
+      if (field.contactRole && typeof value === 'string') {
+        await validateContactSelection(
+          field.contactRole,
+          parsedRow.data.subContractor ?? existingPermit.subContractor,
+          value,
+        );
       }
       set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;
       expectedCurrentValues[field.key] = existingPermit[field.key as keyof PermitDoc] ?? null;

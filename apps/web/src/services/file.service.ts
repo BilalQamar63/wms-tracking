@@ -16,7 +16,7 @@ import { connectDb } from '@/lib/db/mongoose';
 import { parsePermitWorkbook } from '@/lib/excel/workbook-parser';
 import { buildPermitWorkbook } from '@/lib/excel/workbook-builder';
 import { getEnv } from '@/lib/env';
-import { badRequest, forbidden, notFound } from '@/lib/http/errors';
+import { AppError, badRequest, forbidden, notFound } from '@/lib/http/errors';
 import { toFileRecordDTO } from '@/lib/mappers';
 import { timestampForFileName } from '@/lib/utils/file-name';
 import { assertObjectId } from '@/lib/utils/object-id';
@@ -28,6 +28,11 @@ import {
 } from './permit.service';
 import type { PermitFilters, PermitImportDayDTO } from '@wms/shared';
 import { PermitModel } from '@/models/Permit';
+import { getPermitDropdownValues } from './dropdown-values.service';
+import {
+  assertPermitApprovalContacts,
+  createApprovalContactSelectionValidator,
+} from './approval-contact.service';
 
 const POPULATE = { path: 'createdBy', select: 'name isDeleted assignedSubContractor' };
 const MAX_STORED_ERRORS = 100;
@@ -136,10 +141,39 @@ function assertValidImportFile(file: File): void {
   if (file.size > maxBytes) throw badRequest(`File is larger than ${getEnv().MAX_UPLOAD_MB} MB`);
 }
 
-async function parseImportFile(file: File) {
+async function parseImportFile(file: File, user: SessionUser) {
   assertValidImportFile(file);
   const buffer = Buffer.from(await file.arrayBuffer());
-  return parsePermitWorkbook(buffer);
+  const parsed = await parsePermitWorkbook(buffer, await getPermitDropdownValues());
+  const validateContact = createApprovalContactSelectionValidator();
+  const rows: typeof parsed.rows = [];
+  const contactErrors: ImportPreviewDTO['errors'] = [];
+  const assignedSubContractor = assignedSubContractorFor(user);
+  for (const row of parsed.rows) {
+    if (
+      assignedSubContractor &&
+      row.data.subContractor?.trim().toLowerCase() !== assignedSubContractor.toLowerCase()
+    ) {
+      rows.push(row);
+      continue;
+    }
+    try {
+      await assertPermitApprovalContacts(
+        row.data,
+        row.data.subContractor,
+        validateContact,
+      );
+      rows.push(row);
+    } catch (error) {
+      if (!(error instanceof AppError) || error.status !== 400) throw error;
+      contactErrors.push({ row: row.rowNumber, messages: [error.message] });
+    }
+  }
+  return {
+    ...parsed,
+    rows,
+    errors: [...parsed.errors, ...contactErrors],
+  };
 }
 
 /** Parses an upload and previews changes without modifying the current register. */
@@ -164,7 +198,7 @@ function filterRowsForAssignment(
 }
 
 export async function previewPermitFile(file: File, user: SessionUser): Promise<ImportPreviewDTO> {
-  const parsed = await parseImportFile(file);
+  const parsed = await parseImportFile(file, user);
   const assignedSubContractor = assignedSubContractorFor(user);
   const scoped = filterRowsForAssignment(parsed.rows, assignedSubContractor);
   const preview = await previewCurrentRegisterImport(
@@ -196,7 +230,7 @@ export async function commitPermitFile(
   approvals: ImportFieldApproval[],
   addRowNumbers: number[],
 ): Promise<ImportResultDTO> {
-  const parsed = await parseImportFile(file);
+  const parsed = await parseImportFile(file, user);
   const assignedSubContractor = assignedSubContractorFor(user);
   const scoped = filterRowsForAssignment(parsed.rows, assignedSubContractor);
   let importRows = scoped.rows;
@@ -271,7 +305,7 @@ export async function exportPermitFile(
   ptwTypes?: readonly string[],
 ): Promise<{ buffer: Buffer; fileName: string }> {
   const permits = await findPermitsForExport(filters, filters.batchId, ptwTypes);
-  const buffer = await buildPermitWorkbook(permits, fieldKeys);
+  const buffer = await buildPermitWorkbook(permits, fieldKeys, await getPermitDropdownValues());
   const fileName = `PTW-Register_${timestampForFileName()}.xlsx`;
 
   const record = await FileRecordModel.create({

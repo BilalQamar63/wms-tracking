@@ -1,5 +1,5 @@
 import { Schema, model, models, type Model, type Types } from 'mongoose';
-import { SUB_CONTRACTORS, USER_ROLES, type Role } from '@wms/shared';
+import { USER_ROLES, type Role } from '@wms/shared';
 
 export interface UserDoc {
   _id: Types.ObjectId;
@@ -26,7 +26,7 @@ const userSchema = new Schema<UserDoc>(
     email: { type: String, required: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: USER_ROLES, default: 'user', required: true },
-    assignedSubContractor: { type: String, trim: true, enum: SUB_CONTRACTORS },
+    assignedSubContractor: { type: String, trim: true },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,

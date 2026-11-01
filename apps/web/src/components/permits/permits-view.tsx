@@ -23,6 +23,7 @@ import { PermitTable } from './permit-table';
 import { RegisterSummary } from './register-summary';
 import { PermitColumnPicker } from './permit-column-picker';
 import { PermitColumnNavigator } from './permit-column-navigator';
+import { useDropdownValues } from '@/hooks/use-dropdown-values';
 
 const PAGE_SIZE = 20;
 const ALL_TABLE_FIELDS = PERMIT_FIELD_LIST.filter((field) => field.inTable).map(
@@ -41,6 +42,7 @@ export function PermitsView({
   appTimeZone: string;
 }) {
   const toast = useToast();
+  const { data: dropdownValues } = useDropdownValues();
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [page, setPage] = useState(1);
   const [visibleFields, setVisibleFields] = useState<PermitFieldKey[]>(ALL_TABLE_FIELDS);
@@ -65,6 +67,13 @@ export function PermitsView({
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [deletingRegister, setDeletingRegister] = useState(false);
+  const availablePtwTypes = dropdownValues?.newPtwType ?? PTW_TYPES;
+
+  useEffect(() => {
+    if (dropdownValues?.newPtwType) {
+      setSelectedExportPtwTypes([...dropdownValues.newPtwType]);
+    }
+  }, [dropdownValues]);
 
   // Any filter change goes back to page 1.
   useEffect(
@@ -209,7 +218,7 @@ export function PermitsView({
               variant="secondary"
               loading={exporting}
               disabled={exporting}
-              onClick={() => exportExcel(ALL_FIELD_KEYS, [...PTW_TYPES])}
+              onClick={() => exportExcel(ALL_FIELD_KEYS, [...availablePtwTypes])}
             >
               Download full Excel
             </Button>
@@ -238,7 +247,7 @@ export function PermitsView({
               <button
                 type="button"
                 className="text-xs font-medium text-brand-700 hover:text-brand-900"
-                onClick={() => setSelectedExportPtwTypes([...PTW_TYPES])}
+                onClick={() => setSelectedExportPtwTypes([...availablePtwTypes])}
               >
                 Select all
               </button>
@@ -251,7 +260,7 @@ export function PermitsView({
               </button>
             </div>
             <div className="space-y-3">
-              {PTW_TYPES.map((ptwType) => (
+              {availablePtwTypes.map((ptwType) => (
                 <label key={ptwType} className="flex items-start gap-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
