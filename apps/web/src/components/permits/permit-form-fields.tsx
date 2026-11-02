@@ -34,21 +34,8 @@ function normalizeContactValue(value: string): string {
   return `${normalizePart(value.slice(0, separator))} - ${normalizePart(value.slice(separator + 3))}`;
 }
 
-const AREA_RESTRICTIONS = [
-  {
-    label: 'H2S Zone',
-    fields: ['h2sZoneProcessRestricted', 'h2sZoneNonProcessRestricted'],
-  },
-  {
-    label: 'HAC Zone',
-    fields: ['hacZoneProcessRestricted', 'hacZoneNonProcessRestricted'],
-  },
-  {
-    label: 'Dust Zone',
-    fields: ['dustZoneProcessRestricted', 'dustZoneNonProcessRestricted'],
-  },
-] as const;
-const AREA_RESTRICTION_KEYS = new Set<string>(AREA_RESTRICTIONS.flatMap(({ fields }) => fields));
+const AREA_RESTRICTION_FIELDS = ['hazardousArea', 'h2sZone', 'hacZone', 'dustZone'] as const;
+const AREA_RESTRICTION_KEYS = new Set<string>(AREA_RESTRICTION_FIELDS);
 
 interface Props {
   control: Control<PermitInput>;
@@ -70,6 +57,7 @@ function FieldControl({
   contactsValidating,
   contactsError,
   dropdownValues,
+  vertical = false,
 }: {
   field: PermitFieldDef;
   register: Props['register'];
@@ -82,6 +70,7 @@ function FieldControl({
   contactsValidating: boolean;
   contactsError?: Error;
   dropdownValues?: PermitDropdownValues;
+  vertical?: boolean;
 }) {
   const name = field.key as keyof PermitInput;
   const id = `permit-${field.key}`;
@@ -148,7 +137,11 @@ function FieldControl({
       );
     case 'radio':
       return (
-        <div className="flex flex-wrap gap-x-5 gap-y-2" role="radiogroup" aria-label={field.header}>
+        <div
+          className={vertical ? 'flex flex-col gap-2' : 'flex flex-wrap gap-x-5 gap-y-2'}
+          role="radiogroup"
+          aria-label={field.header}
+        >
           {(dropdownValues?.[field.key] ?? field.options ?? []).map((option, index) => (
             <label key={option} className="inline-flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -327,24 +320,23 @@ export function PermitFormFields({
   function renderAreaRestrictions() {
     return (
       <div className="sm:col-span-2 overflow-x-auto">
-        <div className="min-w-[30rem] overflow-hidden rounded-lg border border-slate-200">
-        <div className="grid grid-cols-[minmax(7rem,1fr)_repeat(2,minmax(9rem,1fr))] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
-          <div className="p-3">Area</div>
-          <div className="p-3">Process Restricted</div>
-          <div className="p-3">Non-Process/Unrestricted</div>
-        </div>
-        {AREA_RESTRICTIONS.map(({ label, fields }) => (
-          <div
-            key={label}
-            className="grid grid-cols-[minmax(7rem,1fr)_repeat(2,minmax(9rem,1fr))] border-t border-slate-200"
-          >
-            <div className="flex items-center p-3 text-sm font-medium text-slate-700">{label}</div>
-            {fields.map((key) => {
+        <h3 className="mb-2 border-b border-slate-200 pb-2 text-sm font-medium text-slate-800">
+          Hazardous Area
+        </h3>
+        <div className="min-w-[44rem] overflow-hidden rounded-lg border border-slate-200">
+          <div className="grid grid-cols-[minmax(12rem,1.3fr)_repeat(3,minmax(8rem,1fr))] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            {AREA_RESTRICTION_FIELDS.map((key) => {
+              const field = PERMIT_FIELD_LIST.find((item) => item.key === key);
+              return <div key={key} className="p-3">{field?.header}</div>;
+            })}
+          </div>
+          <div className="grid grid-cols-[minmax(12rem,1.3fr)_repeat(3,minmax(8rem,1fr))] border-t border-slate-200">
+            {AREA_RESTRICTION_FIELDS.map((key) => {
               const field = PERMIT_FIELD_LIST.find((item) => item.key === key);
               if (!field) return null;
               const error = errors[field.key as keyof PermitInput]?.message;
               return (
-                <div key={field.key} className="min-w-0 border-l border-slate-200 p-3">
+                <div key={field.key} className="min-w-0 border-l border-slate-200 p-3 first:border-l-0">
                   <FieldControl
                     field={field}
                     register={register}
@@ -355,13 +347,13 @@ export function PermitFormFields({
                     contactsValidating={contactsValidating}
                     contactsError={contactsError}
                     dropdownValues={dropdownValues}
+                    vertical
                   />
                   {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
                 </div>
               );
             })}
           </div>
-        ))}
         </div>
       </div>
     );

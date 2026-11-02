@@ -4,28 +4,41 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   ClipboardList,
+  ClipboardCheck,
+  ChevronDown,
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
   SlidersHorizontal,
   Users,
 } from 'lucide-react';
+import { useState } from 'react';
 import type { SessionUser } from '@wms/shared';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils/cn';
 
-const NAV = [
+const PERMIT_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
   { href: '/permits', label: 'PTW Register', icon: ClipboardList, adminOnly: false },
   { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: true },
-  { href: '/users', label: 'Users', icon: Users, adminOnly: true },
-  { href: '/authorization-list', label: 'Authorization List', icon: ClipboardList, adminOnly: true },
-  { href: '/dropdown-values', label: 'Dropdown Values', icon: SlidersHorizontal, adminOnly: true },
+  { href: '/authorization-list', label: 'Authorization List', icon: ClipboardCheck, adminOnly: true },
 ] as const;
 
 export function Sidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [permitsOpen, setPermitsOpen] = useState(
+    pathname === '/dashboard' ||
+      pathname.startsWith('/dashboard/') ||
+      pathname.startsWith('/permits') ||
+      pathname.startsWith('/files') ||
+      pathname.startsWith('/authorization-list'),
+  );
+  const [fieldsOpen, setFieldsOpen] = useState(pathname.startsWith('/dropdown-values'));
+
+  function isActive(href: string) {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
 
   async function logout() {
     await apiFetch('/api/auth/logout', { method: 'POST' });
@@ -43,23 +56,100 @@ export function Sidebar({ user }: { user: SessionUser }) {
       </div>
 
       <nav className="flex gap-1 overflow-x-auto p-2 md:min-h-0 md:flex-1 md:flex-col md:gap-1 md:overflow-y-auto md:overflow-x-hidden md:p-3">
-        {NAV.filter((item) => !item.adminOnly || user.role === 'admin').map(
-          ({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
-                pathname.startsWith(href)
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-slate-600 hover:bg-slate-100',
+        <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Master Permits
+        </p>
+        <div>
+          <button
+            type="button"
+            aria-expanded={permitsOpen}
+            aria-controls="manage-permits-links"
+            onClick={() => setPermitsOpen((open) => !open)}
+            className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
+          >
+            <ClipboardList className="h-4 w-4" />
+            <span className="flex-1">Manage Permits</span>
+            <ChevronDown
+              className={cn('h-4 w-4 transition-transform', permitsOpen && 'rotate-180')}
+              aria-hidden
+            />
+          </button>
+          {permitsOpen && (
+            <div id="manage-permits-links" className="mt-1 flex flex-col gap-1 md:pl-3">
+              {PERMIT_NAV.filter((item) => !item.adminOnly || user.role === 'admin').map(
+                ({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                      isActive(href)
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-slate-600 hover:bg-slate-100',
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </Link>
+                ),
               )}
+            </div>
+          )}
+        </div>
+
+        {user.role === 'admin' && (
+          <div>
+            <button
+              type="button"
+              aria-expanded={fieldsOpen}
+              aria-controls="manage-fields-links"
+              onClick={() => setFieldsOpen((open) => !open)}
+              className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
             >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          ),
+              <SlidersHorizontal className="h-4 w-4" />
+              <span className="flex-1">Manage Fields</span>
+              <ChevronDown
+                className={cn('h-4 w-4 transition-transform', fieldsOpen && 'rotate-180')}
+                aria-hidden
+              />
+            </button>
+            {fieldsOpen && (
+              <div id="manage-fields-links" className="mt-1 flex flex-col gap-1 md:pl-3">
+                <Link
+                  href="/dropdown-values"
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                    isActive('/dropdown-values')
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Dropdown Values
+                </Link>
+              </div>
+            )}
+          </div>
         )}
+
+        {user.role === 'admin' && (
+          <Link
+            href="/users"
+            className={cn(
+              'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+              isActive('/users')
+                ? 'bg-brand-50 text-brand-700'
+                : 'text-slate-600 hover:bg-slate-100',
+            )}
+          >
+            <Users className="h-4 w-4" />
+            Users
+          </Link>
+        )}
+        <div className="my-2 border-t border-slate-200" />
+        <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Daily Permit Tracking
+        </p>
       </nav>
 
       <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 md:block md:p-4">

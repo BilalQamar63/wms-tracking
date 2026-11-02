@@ -21,6 +21,13 @@ export const AUTHORIZATION_LIST_DROPDOWN_FIELDS = [
 
 export const AUTHORIZATION_STATUS_OPTIONS = ['Active', 'Inactive'] as const;
 export const PROCESS_RESTRICTION_OPTIONS = ['Y', 'N', 'NC'] as const;
+export const HAZARDOUS_AREA_OPTIONS = [
+  'Process / Restricted',
+  'Non-Process / Unrestricted',
+] as const;
+export const H2S_ZONE_OPTIONS = ['R', 'A', 'Y', 'NC'] as const;
+export const HAC_ZONE_OPTIONS = ['0', '1', '2', 'NC'] as const;
+export const DUST_ZONE_OPTIONS = ['20', '21', '22', 'NC'] as const;
 
 export const SUB_CONTRACTORS = [
   'OQC',
