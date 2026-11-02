@@ -1,27 +1,50 @@
 import { Schema, model, models, type Model, type Types } from 'mongoose';
-import { APPROVAL_CONTACT_ROLES, type ApprovalContactRole } from '@wms/shared';
 
 export interface ApprovalContactDoc {
   _id: Types.ObjectId;
-  role: ApprovalContactRole;
+  srNo: string;
+  approvalFormNo: string;
+  company: string;
   name: string;
+  emiratesId: string;
+  identityKey?: string;
   phone: string;
-  subContractor: string;
+  position: string;
+  wmsRole: string;
+  instituteName: string;
+  jvAssessmentDate: string;
+  wmsValidity: string;
+  status: string;
+  remarks: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const approvalContactSchema = new Schema<ApprovalContactDoc>(
   {
-    role: { type: String, enum: APPROVAL_CONTACT_ROLES, required: true },
-    name: { type: String, required: true, trim: true, maxlength: 80 },
-    phone: { type: String, required: true, trim: true, maxlength: 40 },
-    subContractor: { type: String, required: true, trim: true },
+    srNo: { type: String, trim: true, default: '' },
+    approvalFormNo: { type: String, trim: true, default: '' },
+    company: { type: String, trim: true, default: '' },
+    name: { type: String, trim: true, default: '', maxlength: 160 },
+    emiratesId: { type: String, trim: true, default: '' },
+    identityKey: { type: String, trim: true },
+    phone: { type: String, trim: true, default: '', maxlength: 40 },
+    position: { type: String, trim: true, default: '' },
+    wmsRole: { type: String, trim: true, default: '' },
+    instituteName: { type: String, trim: true, default: '' },
+    jvAssessmentDate: { type: String, trim: true, default: '' },
+    wmsValidity: { type: String, trim: true, default: '' },
+    status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+    remarks: { type: String, trim: true, default: '' },
   },
   { timestamps: true },
 );
 
-approvalContactSchema.index({ subContractor: 1, role: 1, name: 1 });
+approvalContactSchema.index(
+  { identityKey: 1 },
+  { unique: true, partialFilterExpression: { identityKey: { $type: 'string' } } },
+);
+approvalContactSchema.index({ name: 1, phone: 1 });
 
 export const ApprovalContactModel: Model<ApprovalContactDoc> =
   (models.ApprovalContact as Model<ApprovalContactDoc> | undefined) ??

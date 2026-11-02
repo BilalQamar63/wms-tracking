@@ -167,7 +167,7 @@ export function PermitsView({
   return (
     <>
       <PageHeader
-        title="MERAM MASTER PTW TRACKING REGISTER"
+        title="MERAM MASTER GWMS PTW TRACKING REGISTER"
         description="Manage the current PTW tracking register. Excel imports are reviewed and merged into this register."
         actions={
           <>
@@ -417,9 +417,7 @@ export function PermitsView({
             setFilters(EMPTY_PERMIT_FILTERS);
             setPage(1);
             mutate((key) => typeof key === 'string' && key.startsWith('/api/permits'));
-            mutate(
-              (key) => typeof key === 'string' && key.startsWith('/api/approval-contacts'),
-            );
+            mutate((key) => typeof key === 'string' && key.startsWith('/api/approval-contacts'));
             mutate('/api/permits/summary');
             if (canManage) refreshFileHistory();
           }}

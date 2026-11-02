@@ -31,6 +31,18 @@ wms-tracking/
 dropdown options, section. The form, table, Mongoose schema, Zod validation, Excel export (with dropdown
 lists) and Excel import all derive from it. To add or change a column or dropdown value, edit that one file.
 
+**Authorization List:** Admins manage authorization records on the separate Authorization List page. Records
+can be added manually or imported/exported through Excel; imports match by Emirates ID/JVUID (with a
+name-and-mobile fallback for legacy records), preview new and changed records, and allow updates to existing
+records. Position, WMS Role, and Institute Name choices are managed on Dropdown Values. Assessment and WMS
+validity use dates, and status is Active or Inactive. All authorization contacts remain available in the
+Performing Authority, Validate, and Approval permit selectors; these selectors support search by name or
+mobile number and are not filtered by subcontractor.
+
+**Permit planning:** Work Title appears immediately before Work Description in the permit form and Excel
+register. H2S Zone, HAC Zone, and Dust Zone restrictions are always displayed after PTW Endorsement Required,
+with Process Restricted and Non-Process/Unrestricted choices of Y, N, or NC.
+
 Request flow: `route handler` → `service` → `model`. Route handlers only authenticate, validate (Zod) and
 delegate; errors are thrown as `AppError` and converted to a uniform `{ success, data | error }` response.
 

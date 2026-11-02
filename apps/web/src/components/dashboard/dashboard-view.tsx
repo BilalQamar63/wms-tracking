@@ -96,7 +96,7 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
     <>
       <div className="space-y-6">
         <PageHeader
-          title="MERAM MASTER PTW DASHBOARD"
+          title="MERAM MASTER GWMS PTW DASHBOARD"
           description="Overview of permits grouped by Main Contractor and Sub Contractor."
         />
 

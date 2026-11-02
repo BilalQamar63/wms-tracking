@@ -19,6 +19,7 @@ const NAV = [
   { href: '/permits', label: 'PTW Register', icon: ClipboardList, adminOnly: false },
   { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: true },
   { href: '/users', label: 'Users', icon: Users, adminOnly: true },
+  { href: '/authorization-list', label: 'Authorization List', icon: ClipboardList, adminOnly: true },
   { href: '/dropdown-values', label: 'Dropdown Values', icon: SlidersHorizontal, adminOnly: true },
 ] as const;
 

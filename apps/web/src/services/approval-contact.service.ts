@@ -1,63 +1,99 @@
 import type {
   ApprovalContactDTO,
   ApprovalContactInput,
+  ApprovalContactOptionDTO,
   ApprovalContactRole,
   PermitInput,
-  SessionUser,
 } from '@wms/shared';
 import { PERMIT_FIELD_LIST } from '@wms/shared';
-import { assignedSubContractorFor } from '@/lib/auth/permissions';
 import { connectDb } from '@/lib/db/mongoose';
-import { badRequest, notFound } from '@/lib/http/errors';
+import { badRequest, conflict, notFound } from '@/lib/http/errors';
 import { assertObjectId } from '@/lib/utils/object-id';
 import { ApprovalContactModel, type ApprovalContactDoc } from '@/models/ApprovalContact';
 import { PermitModel } from '@/models/Permit';
-import { assertConfiguredSubContractor } from './dropdown-values.service';
+import { normalizeAuthorizationDate } from './authorization-date';
+
+const CONTACT_FIELDS = ['performingAuthority', 'validationBy', 'approvedBy'] as const;
+
+export function normalizeIdentityKey(value: string): string {
+  return normalizeAuthorizationText(value).replace(/[\s-]/g, '').toUpperCase();
+}
+
+export function normalizeAuthorizationText(value: string): string {
+  return value.trim().replace(/^'/, '').trim();
+}
 
 function toApprovalContactDTO(doc: ApprovalContactDoc): ApprovalContactDTO {
+  const name = normalizeAuthorizationText(doc.name ?? '');
+  const phone = normalizeAuthorizationText(doc.phone ?? '');
   return {
     id: String(doc._id),
-    role: doc.role,
-    name: doc.name,
-    phone: doc.phone,
-    subContractor: doc.subContractor,
-    displayValue: `${doc.name} - ${doc.phone}`,
+    srNo: normalizeAuthorizationText(doc.srNo ?? ''),
+    approvalFormNo: normalizeAuthorizationText(doc.approvalFormNo ?? ''),
+    company: normalizeAuthorizationText(doc.company ?? ''),
+    name,
+    emiratesId: normalizeAuthorizationText(doc.emiratesId ?? ''),
+    phone,
+    position: normalizeAuthorizationText(doc.position ?? ''),
+    wmsRole: normalizeAuthorizationText(doc.wmsRole ?? ''),
+    instituteName: normalizeAuthorizationText(doc.instituteName ?? ''),
+    jvAssessmentDate: normalizeAuthorizationDate(doc.jvAssessmentDate ?? ''),
+    wmsValidity: normalizeAuthorizationDate(doc.wmsValidity ?? ''),
+    status: doc.status?.toLocaleLowerCase() === 'inactive' ? 'Inactive' : 'Active',
+    remarks: normalizeAuthorizationText(doc.remarks ?? ''),
+    displayValue: `${name} - ${phone}`,
   };
 }
 
 async function assertContactCanBeChanged(contact: ApprovalContactDoc): Promise<void> {
+  const displayValues = [
+    `${contact.name} - ${contact.phone}`,
+    `${normalizeAuthorizationText(contact.name ?? '')} - ${normalizeAuthorizationText(contact.phone ?? '')}`,
+  ];
   const usedByPermit = await PermitModel.exists({
-    [contact.role]: `${contact.name} - ${contact.phone}`,
-    subContractor: contact.subContractor,
+    $or: CONTACT_FIELDS.map((field) => ({ [field]: { $in: displayValues } })),
   });
   if (usedByPermit) {
     throw badRequest(
-      'Cannot edit or delete a contact that is selected by a permit. Update those permits first.',
+      'Cannot change or delete a contact that is selected by a permit. Update those permits first.',
     );
   }
 }
 
-export async function listApprovalContacts(
-  user: SessionUser,
-  requestedSubContractor?: string,
-): Promise<ApprovalContactDTO[]> {
+export async function listApprovalContacts(): Promise<ApprovalContactDTO[]> {
   await connectDb();
-  const assignedSubContractor = assignedSubContractorFor(user);
-  const subContractor = assignedSubContractor ?? requestedSubContractor;
-  const docs = await ApprovalContactModel.find(
-    subContractor ? { subContractor } : {},
-  )
-    .sort({ subContractor: 1, role: 1, name: 1, phone: 1 })
+  const docs = await ApprovalContactModel.find({})
+    .sort({ name: 1, phone: 1 })
     .lean<ApprovalContactDoc[]>();
   return docs.map(toApprovalContactDTO);
+}
+
+export async function listApprovalContactOptions(): Promise<ApprovalContactOptionDTO[]> {
+  await connectDb();
+  const docs = await ApprovalContactModel.find({})
+    .select('name phone')
+    .sort({ name: 1, phone: 1 })
+    .lean<Array<Pick<ApprovalContactDoc, '_id' | 'name' | 'phone'>>>();
+  return docs.map((doc) => ({
+    id: String(doc._id),
+    name: normalizeAuthorizationText(doc.name),
+    phone: normalizeAuthorizationText(doc.phone),
+    displayValue: `${normalizeAuthorizationText(doc.name)} - ${normalizeAuthorizationText(doc.phone)}`,
+  }));
 }
 
 export async function createApprovalContact(
   input: ApprovalContactInput,
 ): Promise<ApprovalContactDTO> {
   await connectDb();
-  await assertConfiguredSubContractor(input.subContractor);
-  const doc = await ApprovalContactModel.create(input);
+  const identityKey = normalizeIdentityKey(input.emiratesId);
+  if (identityKey && await ApprovalContactModel.exists({ identityKey })) {
+    throw conflict('A contact with this Emirates ID/JVUID already exists');
+  }
+  const doc = await ApprovalContactModel.create({
+    ...input,
+    ...(identityKey ? { identityKey } : {}),
+  });
   return toApprovalContactDTO(doc.toObject() as ApprovalContactDoc);
 }
 
@@ -73,12 +109,8 @@ export function assertImportedApprovalContactValues(input: PermitInput): void {
   for (const field of PERMIT_FIELD_LIST) {
     if (!field.contactRole) continue;
     const value = input[field.key as keyof PermitInput];
-    if (typeof value !== 'string' || !value) continue;
-    if (!parseApprovalContactValue(value)) {
+    if (typeof value === 'string' && value && !parseApprovalContactValue(value)) {
       throw badRequest(`${field.header} must be formatted as "Name - mobile number"`);
-    }
-    if (!input.subContractor) {
-      throw badRequest(`Select a sub contractor before importing ${field.header}`);
     }
   }
 }
@@ -99,36 +131,30 @@ export function normalizeImportedApprovalContactValues(input: PermitInput): Perm
   return normalized;
 }
 
-export async function ensureImportedApprovalContact(
-  role: ApprovalContactRole,
-  displayValue: string,
-  subContractor: string | undefined,
-): Promise<void> {
-  if (!subContractor) {
-    throw badRequest(`Select a sub contractor before importing ${role}`);
-  }
+export async function ensureImportedApprovalContact(displayValue: string): Promise<void> {
   const parsed = parseApprovalContactValue(displayValue);
   if (!parsed) {
     throw badRequest('Approval contacts must be formatted as "Name - mobile number"');
   }
-  const { name, phone } = parsed;
   await connectDb();
-  await assertConfiguredSubContractor(subContractor);
-  const existing = await ApprovalContactModel.exists({ role, name, phone, subContractor });
+  const existing = await ApprovalContactModel.exists({
+    name: parsed.name,
+    phone: parsed.phone,
+  });
   if (!existing) {
-    await ApprovalContactModel.create({ role, name, phone, subContractor });
+    await ApprovalContactModel.create({
+      name: parsed.name,
+      phone: parsed.phone,
+      emiratesId: '',
+    });
   }
 }
 
-export async function ensureImportedPermitApprovalContacts(
-  input: PermitInput,
-  subContractor = input.subContractor,
-): Promise<void> {
+export async function ensureImportedPermitApprovalContacts(input: PermitInput): Promise<void> {
   for (const field of PERMIT_FIELD_LIST) {
     if (!field.contactRole) continue;
     const value = input[field.key as keyof PermitInput];
-    if (typeof value !== 'string' || !value) continue;
-    await ensureImportedApprovalContact(field.contactRole, value, subContractor);
+    if (typeof value === 'string' && value) await ensureImportedApprovalContact(value);
   }
 }
 
@@ -138,21 +164,31 @@ export async function updateApprovalContact(
 ): Promise<ApprovalContactDTO> {
   assertObjectId(id, 'Approval contact');
   await connectDb();
-  await assertConfiguredSubContractor(input.subContractor);
   const existing = await ApprovalContactModel.findById(id).lean<ApprovalContactDoc | null>();
   if (!existing) throw notFound('Approval contact');
-  if (
-    existing.role !== input.role ||
-    existing.name !== input.name ||
-    existing.phone !== input.phone ||
-    existing.subContractor !== input.subContractor
-  ) {
+
+  const identityKey = normalizeIdentityKey(input.emiratesId);
+  if (identityKey && identityKey !== existing.identityKey) {
+    if (await ApprovalContactModel.exists({ identityKey, _id: { $ne: id } })) {
+      throw conflict('A contact with this Emirates ID/JVUID already exists');
+    }
+  }
+
+  if (existing.name !== input.name || existing.phone !== input.phone) {
     await assertContactCanBeChanged(existing);
   }
-  const doc = await ApprovalContactModel.findByIdAndUpdate(id, { $set: input }, {
-    new: true,
-    runValidators: true,
-  }).lean<ApprovalContactDoc | null>();
+
+  const doc = await ApprovalContactModel.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        ...input,
+        ...(!identityKey && existing.emiratesId ? { emiratesId: existing.emiratesId } : {}),
+        ...(identityKey ? { identityKey } : {}),
+      },
+    },
+    { new: true, runValidators: true },
+  ).lean<ApprovalContactDoc | null>();
   if (!doc) throw notFound('Approval contact');
   return toApprovalContactDTO(doc);
 }
@@ -166,41 +202,60 @@ export async function deleteApprovalContact(id: string): Promise<void> {
   await ApprovalContactModel.findByIdAndDelete(id);
 }
 
+export async function deleteApprovalContacts(ids: string[]): Promise<number> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) throw badRequest('Select at least one authorization to delete');
+  uniqueIds.forEach((id) => assertObjectId(id, 'Authorization'));
+
+  await connectDb();
+  const contacts = await ApprovalContactModel.find({ _id: { $in: uniqueIds } })
+    .lean<ApprovalContactDoc[]>();
+  if (contacts.length !== uniqueIds.length) {
+    throw notFound('One or more selected authorizations');
+  }
+
+  const displayValues = contacts.flatMap((contact) => [
+    `${contact.name} - ${contact.phone}`,
+    `${normalizeAuthorizationText(contact.name ?? '')} - ${normalizeAuthorizationText(contact.phone ?? '')}`,
+  ]);
+  const usedByPermit = await PermitModel.exists({
+    $or: CONTACT_FIELDS.map((field) => ({ [field]: { $in: displayValues } })),
+  });
+  if (usedByPermit) {
+    throw badRequest(
+      'Cannot delete selected authorizations that are used by permits. Remove them from those permits first.',
+    );
+  }
+
+  const result = await ApprovalContactModel.deleteMany({ _id: { $in: uniqueIds } });
+  if (result.deletedCount !== uniqueIds.length) {
+    throw conflict('The authorization list changed during deletion; refresh and try again');
+  }
+  return result.deletedCount;
+}
+
 export function createApprovalContactSelectionValidator() {
-  const contactsBySubContractor = new Map<
-    string,
-    Promise<Map<ApprovalContactRole, Set<string>>>
-  >();
+  let contactsPromise: Promise<Set<string>> | undefined;
 
   return async (
-    role: ApprovalContactRole,
-    subContractor: string | undefined,
+    _role: ApprovalContactRole,
+    _subContractor: string | undefined,
     displayValue: string,
   ): Promise<void> => {
-    if (!subContractor) {
-      throw badRequest(`Select a sub contractor before selecting ${role}`);
-    }
+    contactsPromise ??= connectDb().then(async () => {
+      const contacts = await ApprovalContactModel.find({})
+        .select('name phone')
+        .lean<Array<Pick<ApprovalContactDoc, 'name' | 'phone'>>>();
+      return new Set(
+        contacts.flatMap((contact) => [
+          `${contact.name} - ${contact.phone}`,
+          `${normalizeAuthorizationText(contact.name)} - ${normalizeAuthorizationText(contact.phone)}`,
+        ]),
+      );
+    });
 
-    let contactsPromise = contactsBySubContractor.get(subContractor);
-    if (!contactsPromise) {
-      contactsPromise = connectDb().then(async () => {
-        const contacts = await ApprovalContactModel.find({ subContractor })
-          .select('role name phone')
-          .lean<Array<Pick<ApprovalContactDoc, 'role' | 'name' | 'phone'>>>();
-        const byRole = new Map<ApprovalContactRole, Set<string>>();
-        for (const contact of contacts) {
-          const values = byRole.get(contact.role) ?? new Set<string>();
-          values.add(`${contact.name} - ${contact.phone}`);
-          byRole.set(contact.role, values);
-        }
-        return byRole;
-      });
-      contactsBySubContractor.set(subContractor, contactsPromise);
-    }
-
-    const contacts = await contactsPromise;
-    if (!contacts.get(role)?.has(displayValue)) {
-      throw badRequest(`The selected ${role} is not available for ${subContractor}`);
+    if (!(await contactsPromise).has(displayValue)) {
+      throw badRequest('The selected approval contact is not available');
     }
   };
 }
@@ -219,8 +274,6 @@ export async function assertPermitApprovalContacts(
     }
   }
   await Promise.all(
-    selected.map(({ role, value }) =>
-      validateSelection(role, subContractor, value),
-    ),
+    selected.map(({ role, value }) => validateSelection(role, subContractor, value)),
   );
 }

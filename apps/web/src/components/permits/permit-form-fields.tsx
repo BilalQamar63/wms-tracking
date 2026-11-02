@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, type ChangeEvent } from 'react';
+import { Fragment, useEffect, useMemo, type ChangeEvent } from 'react';
 import {
   useWatch,
   type Control,
@@ -10,7 +10,6 @@ import {
 } from 'react-hook-form';
 import {
   addDaysToYmd,
-  type ApprovalContactDTO,
   FORM_SECTIONS,
   PERMIT_FIELD_LIST,
   getPlanDurationDays,
@@ -19,19 +18,37 @@ import {
   type PermitInput,
 } from '@wms/shared';
 import type { PermitDropdownValues } from '@/services/dropdown-values.service';
-import { useApprovalContacts } from '@/hooks/use-approval-contacts';
+import { useApprovalContactOptions } from '@/hooks/use-approval-contact-options';
 import { useDropdownValues } from '@/hooks/use-dropdown-values';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils/cn';
 
 function normalizeContactValue(value: string): string {
   const separator = value.lastIndexOf(' - ');
-  if (separator < 0) return value;
-  return `${value.slice(0, separator).trim()} - ${value.slice(separator + 3).trim()}`;
+  const normalizePart = (part: string) => part.trim().replace(/^'/, '').trim();
+  if (separator < 0) return normalizePart(value);
+  return `${normalizePart(value.slice(0, separator))} - ${normalizePart(value.slice(separator + 3))}`;
 }
+
+const AREA_RESTRICTIONS = [
+  {
+    label: 'H2S Zone',
+    fields: ['h2sZoneProcessRestricted', 'h2sZoneNonProcessRestricted'],
+  },
+  {
+    label: 'HAC Zone',
+    fields: ['hacZoneProcessRestricted', 'hacZoneNonProcessRestricted'],
+  },
+  {
+    label: 'Dust Zone',
+    fields: ['dustZoneProcessRestricted', 'dustZoneNonProcessRestricted'],
+  },
+] as const;
+const AREA_RESTRICTION_KEYS = new Set<string>(AREA_RESTRICTIONS.flatMap(({ fields }) => fields));
 
 interface Props {
   control: Control<PermitInput>;
@@ -47,7 +64,6 @@ function FieldControl({
   setValue,
   invalid,
   assignedSubContractor,
-  hasSubContractor,
   contactValue,
   contacts,
   contactsLoading,
@@ -60,9 +76,8 @@ function FieldControl({
   setValue: Props['setValue'];
   invalid: boolean;
   assignedSubContractor?: string;
-  hasSubContractor: boolean;
   contactValue?: string;
-  contacts?: ApprovalContactDTO[];
+  contacts?: Array<{ displayValue: string }>;
   contactsLoading: boolean;
   contactsValidating: boolean;
   contactsError?: Error;
@@ -99,17 +114,27 @@ function FieldControl({
         );
       }
       if (field.contactRole) {
+        const contactFieldName = field.key as
+          | 'performingAuthority'
+          | 'validationBy'
+          | 'approvedBy';
         return (
-          <Select
-            id={id}
-            options={(contacts ?? [])
-              .filter((contact) => contact.role === field.contactRole)
-              .map((contact) => contact.displayValue)}
-            disabled={!hasSubContractor || contactsLoading || !!contactsError}
-            invalid={invalid}
-            {...register(name)}
-            value={contactValue ?? ''}
-          />
+          <>
+            <input type="hidden" {...register(name)} value={contactValue ?? ''} />
+            <SearchableSelect
+              id={id}
+              options={[...new Set((contacts ?? []).map((contact) => contact.displayValue))]}
+              disabled={contactsLoading || !!contactsError}
+              invalid={invalid}
+              value={contactValue ?? ''}
+              onChange={(value) =>
+                setValue(contactFieldName, value, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            />
+          </>
         );
       }
       return (
@@ -196,8 +221,6 @@ export function PermitFormFields({
 }: Props) {
   const planStartDate = useWatch({ control, name: 'planValidStartDate' });
   const planEndDate = useWatch({ control, name: 'planValidEndDate' });
-  const selectedSubContractor = useWatch({ control, name: 'subContractor' });
-  const subContractor = assignedSubContractor || selectedSubContractor;
   const performingAuthority = useWatch({ control, name: 'performingAuthority' });
   const validationBy = useWatch({ control, name: 'validationBy' });
   const approvedBy = useWatch({ control, name: 'approvedBy' });
@@ -210,7 +233,7 @@ export function PermitFormFields({
     isLoading: contactsLoading,
     isValidating: contactsValidating,
     error: contactsError,
-  } = useApprovalContacts(subContractor || undefined, Boolean(subContractor));
+  } = useApprovalContactOptions();
   const { data: dropdownValues, error: dropdownValuesError } = useDropdownValues();
   const planDuration =
     planStartDate && planEndDate ? getPlanDurationDays(planStartDate, planEndDate) : null;
@@ -223,7 +246,6 @@ export function PermitFormFields({
       if (!current) continue;
       const matchingContact = contacts.find(
         (contact) =>
-          contact.role === field.contactRole &&
           normalizeContactValue(contact.displayValue) === normalizeContactValue(current),
       );
       if (!matchingContact) {
@@ -246,12 +268,112 @@ export function PermitFormFields({
     setValue,
   ]);
 
+  function renderField(field: PermitFieldDef) {
+    const error = errors[field.key as keyof PermitInput]?.message;
+    const contactError =
+      field.contactRole && contactsError
+        ? `Could not load contacts: ${contactsError.message}`
+        : undefined;
+    const dropdownError =
+      ['select', 'radio', 'multiselect'].includes(field.type) &&
+      !field.contactRole &&
+      dropdownValuesError
+        ? `Could not load dropdown values: ${dropdownValuesError.message}`
+        : undefined;
+    return (
+      <FormField
+        key={field.key}
+        label={field.header}
+        htmlFor={field.type === 'computed' ? undefined : `permit-${field.key}`}
+        required={field.required}
+        error={error ?? contactError ?? dropdownError}
+        className={cn(field.fullWidth && 'sm:col-span-2')}
+      >
+        {field.type === 'computed' ? (
+          <div
+            id={`permit-${field.key}`}
+            aria-live="polite"
+            className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700"
+          >
+            {planDuration === null
+              ? planStartDate && planEndDate
+                ? 'End date must be on or after start date'
+                : 'Select planned start and end dates'
+              : `${planDuration} ${planDuration === 1 ? 'day' : 'days'} left`}
+          </div>
+        ) : (
+          <FieldControl
+            field={field}
+            register={register}
+            setValue={setValue}
+            invalid={!!error}
+            assignedSubContractor={assignedSubContractor}
+            contactValue={
+              field.contactRole
+                ? contactValues[field.key as keyof typeof contactValues]
+                : undefined
+            }
+            contacts={contacts}
+            contactsLoading={contactsLoading}
+            contactsValidating={contactsValidating}
+            contactsError={contactsError}
+            dropdownValues={dropdownValues}
+          />
+        )}
+      </FormField>
+    );
+  }
+
+  function renderAreaRestrictions() {
+    return (
+      <div className="sm:col-span-2 overflow-x-auto">
+        <div className="min-w-[30rem] overflow-hidden rounded-lg border border-slate-200">
+        <div className="grid grid-cols-[minmax(7rem,1fr)_repeat(2,minmax(9rem,1fr))] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          <div className="p-3">Area</div>
+          <div className="p-3">Process Restricted</div>
+          <div className="p-3">Non-Process/Unrestricted</div>
+        </div>
+        {AREA_RESTRICTIONS.map(({ label, fields }) => (
+          <div
+            key={label}
+            className="grid grid-cols-[minmax(7rem,1fr)_repeat(2,minmax(9rem,1fr))] border-t border-slate-200"
+          >
+            <div className="flex items-center p-3 text-sm font-medium text-slate-700">{label}</div>
+            {fields.map((key) => {
+              const field = PERMIT_FIELD_LIST.find((item) => item.key === key);
+              if (!field) return null;
+              const error = errors[field.key as keyof PermitInput]?.message;
+              return (
+                <div key={field.key} className="min-w-0 border-l border-slate-200 p-3">
+                  <FieldControl
+                    field={field}
+                    register={register}
+                    setValue={setValue}
+                    invalid={!!error}
+                    assignedSubContractor={assignedSubContractor}
+                    contactsLoading={contactsLoading}
+                    contactsValidating={contactsValidating}
+                    contactsError={contactsError}
+                    dropdownValues={dropdownValues}
+                  />
+                  {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {FORM_SECTIONS.map((section) => {
         const fields = PERMIT_FIELD_LIST.filter(
           (field) =>
             field.section === section.id &&
+            !AREA_RESTRICTION_KEYS.has(field.key) &&
             (field.type !== 'computed' || field.key === 'ptwValidity'),
         );
         return (
@@ -260,62 +382,12 @@ export function PermitFormFields({
               {section.title}
             </legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {fields.map((field) => {
-                const error = errors[field.key as keyof PermitInput]?.message;
-                const contactError =
-                  field.contactRole && contactsError
-                    ? `Could not load contacts: ${contactsError.message}`
-                    : undefined;
-                const dropdownError =
-                  ['select', 'radio', 'multiselect'].includes(field.type) &&
-                  !field.contactRole &&
-                  dropdownValuesError
-                    ? `Could not load dropdown values: ${dropdownValuesError.message}`
-                    : undefined;
-                return (
-                  <FormField
-                    key={field.key}
-                    label={field.header}
-                    htmlFor={field.type === 'computed' ? undefined : `permit-${field.key}`}
-                    required={field.required}
-                    error={error ?? contactError ?? dropdownError}
-                    className={cn(field.fullWidth && 'sm:col-span-2')}
-                  >
-                    {field.type === 'computed' ? (
-                      <div
-                        id={`permit-${field.key}`}
-                        aria-live="polite"
-                        className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700"
-                      >
-                        {planDuration === null
-                          ? planStartDate && planEndDate
-                            ? 'End date must be on or after start date'
-                            : 'Select planned start and end dates'
-                          : `${planDuration} ${planDuration === 1 ? 'day' : 'days'} left`}
-                      </div>
-                    ) : (
-                      <FieldControl
-                        field={field}
-                        register={register}
-                        setValue={setValue}
-                        invalid={!!error}
-                        assignedSubContractor={assignedSubContractor}
-                        hasSubContractor={!!subContractor}
-                        contactValue={
-                          field.contactRole
-                            ? contactValues[field.key as keyof typeof contactValues]
-                            : undefined
-                        }
-                        contacts={contacts}
-                        contactsLoading={contactsLoading}
-                        contactsValidating={contactsValidating}
-                        contactsError={contactsError}
-                        dropdownValues={dropdownValues}
-                      />
-                    )}
-                  </FormField>
-                );
-              })}
+              {fields.map((field) => (
+                <Fragment key={field.key}>
+                  {renderField(field)}
+                  {field.key === 'ptwEndorsementRequired' && renderAreaRestrictions()}
+                </Fragment>
+              ))}
             </div>
           </fieldset>
         );

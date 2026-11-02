@@ -14,7 +14,6 @@ import {
   type PermitInput,
   type PermitQuery,
   type PermitRegisterSummaryDTO,
-  type ApprovalContactRole,
   type SessionUser,
 } from '@wms/shared';
 import { assignedSubContractorFor } from '@/lib/auth/permissions';
@@ -495,11 +494,7 @@ export async function applyReviewedImport(
 
   const operations: Record<string, unknown>[] = [];
   const approvalContactsForRows: PermitInput[] = [];
-  const approvalContactsForUpdates: Array<{
-    role: ApprovalContactRole;
-    value: string;
-    subContractor: string | undefined;
-  }> = [];
+  const approvalContactsForUpdates: string[] = [];
   for (const preview of previewRows) {
     const parsedRow = parsedByNumber.get(preview.rowNumber);
     if (!parsedRow) continue;
@@ -553,11 +548,7 @@ export async function applyReviewedImport(
         throw badRequest(`Field "${field.header}" has no incoming value`);
       }
       if (field.contactRole && typeof value === 'string') {
-        approvalContactsForUpdates.push({
-          role: field.contactRole,
-          value,
-          subContractor: parsedRow.data.subContractor ?? existingPermit.subContractor,
-        });
+        approvalContactsForUpdates.push(value);
       }
       set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;
       expectedCurrentValues[field.key] = existingPermit[field.key as keyof PermitDoc] ?? null;
@@ -579,11 +570,7 @@ export async function applyReviewedImport(
     await ensureImportedPermitApprovalContacts(input);
   }
   for (const contact of approvalContactsForUpdates) {
-    await ensureImportedApprovalContact(
-      contact.role,
-      contact.value,
-      contact.subContractor,
-    );
+    await ensureImportedApprovalContact(contact);
   }
 
   const insertOperations = operations.filter((operation) => 'insertOne' in operation);

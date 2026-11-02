@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { DropdownValuesView } from '@/components/approval-contacts/approval-contacts-view';
+import { DropdownValuesView } from '@/components/dropdown-values/dropdown-values-view';
 import { requirePageUser } from '@/lib/auth/session';
 
 export const metadata = { title: 'Dropdown Values' };

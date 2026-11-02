@@ -13,6 +13,15 @@ export const APPROVAL_CONTACT_ROLES = [
 ] as const;
 export type ApprovalContactRole = (typeof APPROVAL_CONTACT_ROLES)[number];
 
+export const AUTHORIZATION_LIST_DROPDOWN_FIELDS = [
+  { key: 'position', header: 'Position' },
+  { key: 'wmsRole', header: 'WMS Role' },
+  { key: 'instituteName', header: 'Institute Name' },
+] as const;
+
+export const AUTHORIZATION_STATUS_OPTIONS = ['Active', 'Inactive'] as const;
+export const PROCESS_RESTRICTION_OPTIONS = ['Y', 'N', 'NC'] as const;
+
 export const SUB_CONTRACTORS = [
   'OQC',
   'INCOL',

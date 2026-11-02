@@ -2,13 +2,13 @@ import { z } from 'zod';
 import { requireAdmin, requireUser } from '@/lib/auth/session';
 import { created, ok, route } from '@/lib/http/response';
 import {
+  CONFIGURABLE_DROPDOWN_FIELDS,
   listDropdownValuesForUser,
-  PERMIT_DROPDOWN_FIELDS,
   savePermitDropdownValues,
 } from '@/services/dropdown-values.service';
 
 const fieldKeySchema = z.string().refine(
-  (key) => PERMIT_DROPDOWN_FIELDS.some((field) => field.key === key),
+  (key) => CONFIGURABLE_DROPDOWN_FIELDS.some((field) => field.key === key),
   'Unknown dropdown field',
 );
 const valuesSchema = z.object({
