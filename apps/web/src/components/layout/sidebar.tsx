@@ -6,6 +6,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   ChevronDown,
+  CalendarDays,
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
@@ -21,7 +22,12 @@ const PERMIT_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
   { href: '/permits', label: 'PTW Register', icon: ClipboardList, adminOnly: false },
   { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: true },
-  { href: '/authorization-list', label: 'Authorization List', icon: ClipboardCheck, adminOnly: true },
+  {
+    href: '/authorization-list',
+    label: 'Authorization List',
+    icon: ClipboardCheck,
+    adminOnly: true,
+  },
 ] as const;
 
 export function Sidebar({ user }: { user: SessionUser }) {
@@ -31,6 +37,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
     pathname === '/dashboard' ||
       pathname.startsWith('/dashboard/') ||
       pathname.startsWith('/permits') ||
+      pathname.startsWith('/daily-register') ||
       pathname.startsWith('/files') ||
       pathname.startsWith('/authorization-list'),
   );
@@ -147,9 +154,25 @@ export function Sidebar({ user }: { user: SessionUser }) {
           </Link>
         )}
         <div className="my-2 border-t border-slate-200" />
-        <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Daily Permit Tracking
-        </p>
+        {(user.role === 'admin' || user.assignedSubContractor) && (
+          <>
+            <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Daily Permit Tracking
+            </p>
+            <Link
+              href="/daily-register"
+              className={cn(
+                'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                isActive('/daily-register')
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'text-slate-600 hover:bg-slate-100',
+              )}
+            >
+              <CalendarDays className="h-4 w-4" />
+              Daily Register
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 md:block md:p-4">

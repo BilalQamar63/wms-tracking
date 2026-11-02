@@ -49,7 +49,9 @@ const SEARCH_FIELDS = [
   'approvedByPtwc',
 ] as const;
 
-export async function getCurrentRegisterSummary(user: SessionUser): Promise<PermitRegisterSummaryDTO> {
+export async function getCurrentRegisterSummary(
+  user: SessionUser,
+): Promise<PermitRegisterSummaryDTO> {
   await connectDb();
   const assignedSubContractor = assignedSubContractorFor(user);
   const currentRegisterFilter = {
@@ -555,13 +557,14 @@ export async function applyReviewedImport(
     }
 
     if (Object.keys(set).length === 0) continue;
+    const update = {
+      $set: { ...set, updatedBy: userId },
+      $unset: { ptwValidity: 1 },
+    };
     operations.push({
       updateOne: {
         filter: { _id: existingPermit._id, ...expectedCurrentValues },
-        update: {
-          $set: { ...set, updatedBy: userId },
-          $unset: { ptwValidity: 1 },
-        },
+        update,
       },
     });
   }

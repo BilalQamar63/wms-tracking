@@ -1,9 +1,11 @@
 import type { Types } from 'mongoose';
 import {
   formatPlanValidity,
+  DAILY_REGISTER_FIELDS,
   PERMIT_FIELD_LIST,
   ymdToUtcDate,
   type FileRecordDTO,
+  type DailyRegisterDTO,
   type PermitDTO,
   type PermitInput,
   type UserDTO,
@@ -11,6 +13,7 @@ import {
 } from '@wms/shared';
 import type { FileRecordDoc } from '@/models/FileRecord';
 import type { PermitDoc } from '@/models/Permit';
+import type { DailyRegisterEntryDoc } from '@/models/DailyRegisterEntry';
 import type { UserDoc } from '@/models/User';
 
 type PopulatedUser = Pick<UserDoc, 'name' | 'isDeleted' | 'assignedSubContractor'> & {
@@ -54,7 +57,7 @@ export function toPermitDTO(doc: PermitDoc): PermitDTO {
     }
     const value =
       field.key === 'ptwcStatus'
-        ? doc.ptwcStatus ?? (doc.approvedByPtwc ? 'Approved' : undefined)
+        ? (doc.ptwcStatus ?? (doc.approvedByPtwc ? 'Approved' : undefined))
         : doc[field.key as keyof PermitDoc];
     if (value === undefined || value === null) continue;
     (dto as unknown as Record<string, unknown>)[field.key] =
@@ -68,6 +71,24 @@ export function toPermitDTO(doc: PermitDoc): PermitDTO {
                 .map((item) => item.trim())
                 .filter(Boolean)
             : value;
+  }
+  return dto;
+}
+
+export function toDailyRegisterDTO(doc: DailyRegisterEntryDoc): DailyRegisterDTO {
+  const dto: DailyRegisterDTO = {
+    id: String(doc._id),
+    date: doc.date,
+    srNo: doc.srNo,
+    createdAt: doc.createdAt.toISOString(),
+    updatedAt: doc.updatedAt.toISOString(),
+  };
+  for (const field of DAILY_REGISTER_FIELDS) {
+    if (field.type === 'computed') continue;
+    const value = doc[field.key as keyof DailyRegisterEntryDoc];
+    if (typeof value === 'string') {
+      Object.assign(dto, { [field.key]: value });
+    }
   }
   return dto;
 }
@@ -108,6 +129,7 @@ export function toFileRecordDTO(doc: FileRecordDoc): FileRecordDTO {
     originalName: doc.originalName,
     bytes: doc.bytes,
     rowCount: doc.rowCount,
+    dailyDate: doc.dailyDate,
     stats: doc.stats,
     subContractors: doc.subContractors,
     importedPermits: doc.importedPermits,

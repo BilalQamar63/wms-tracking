@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PERMIT_FIELD_LIST, type PermitFieldDef } from '../constants/permit-fields';
-import { getTodayYmd } from '../utils/date';
+import { getPlanDurationDays, getTodayYmd, MAX_PTW_VALIDITY_DAYS } from '../utils/date';
 import type { PermitInput } from '../types';
 
 const emptyToUndefined = (value: unknown): unknown =>
@@ -32,7 +32,10 @@ function buildFieldSchema(
           errorMap: () => ({ message: `Must be one of: ${options.join(', ')}` }),
         });
       } else {
-        base = z.string().trim().max(field.maxLength ?? 255);
+        base = z
+          .string()
+          .trim()
+          .max(field.maxLength ?? 255);
       }
       break;
     }
@@ -75,10 +78,7 @@ export function createPermitInputSchema(
   optionOverrides?: Readonly<Record<string, readonly string[]>>,
 ) {
   const shape = Object.fromEntries(
-    PERMIT_FIELD_LIST.map((field) => [
-      field.key,
-      buildFieldSchema(field, optionOverrides),
-    ]),
+    PERMIT_FIELD_LIST.map((field) => [field.key, buildFieldSchema(field, optionOverrides)]),
   );
   return z.object(shape).superRefine((value, ctx) => {
     const { planValidStartDate: start, planValidEndDate: end } = value as PermitInput;
@@ -104,6 +104,16 @@ export function createPermitInputSchema(
         code: z.ZodIssueCode.custom,
         path: ['planValidEndDate'],
         message: 'End date cannot be before the start date',
+      });
+    } else if (
+      start &&
+      end &&
+      (getPlanDurationDays(start, end) ?? 0) > MAX_PTW_VALIDITY_DAYS
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['planValidEndDate'],
+        message: `PTW validity cannot exceed ${MAX_PTW_VALIDITY_DAYS} days`,
       });
     }
   }) as unknown as z.ZodType<PermitInput, z.ZodTypeDef, unknown>;
@@ -149,5 +159,59 @@ export const permitQuerySchema = permitFiltersSchema.extend({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+const isValidYmd = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+};
+
+export const dailyRegisterDateSchema = z.string().refine(isValidYmd, 'Choose a valid register date');
+
+export const dailyRegisterInputSchema = z
+  .object({
+    shiftDayNight: z.string().trim().max(100).optional(),
+    plantDivision: z.string().trim().max(255).optional(),
+    mainContractor: z.string().trim().max(255).optional(),
+    subContractor: z.string().trim().max(255).optional(),
+    department: z.string().trim().max(255).optional(),
+    discipline: z.string().trim().max(255).optional(),
+    ptwTitle: z.string().trim().max(255).optional(),
+    workLocation: z.string().trim().max(500).optional(),
+    equipmentTagNo: z.string().trim().max(255).optional(),
+    ptwType: z.string().trim().max(255).optional(),
+    ptwNumber: z.string().trim().max(100).optional(),
+    certificateTypes: z.string().trim().max(500).optional(),
+    plannedStartDate: z.string().refine(isValidYmd, 'Choose a valid planned start date'),
+    plannedEndDate: z.string().refine(isValidYmd, 'Choose a valid planned end date'),
+    shiftValidity: z.string().trim().max(100).optional(),
+    permitIssuer: z.string().trim().max(255).optional(),
+    permitIssuerTime: z.string().trim().max(30).optional(),
+    jobPerformer1: z.string().trim().max(255).optional(),
+    jobPerformer1Time: z.string().trim().max(30).optional(),
+    jobPerformer2: z.string().trim().max(255).optional(),
+    jobPerformer2Time: z.string().trim().max(30).optional(),
+    ptwStatus: z.string().trim().max(100).optional(),
+    remarks: z.string().trim().max(1000).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.plannedEndDate < value.plannedStartDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['plannedEndDate'],
+        message: 'Planned End Date cannot be before Planned Start Date',
+      });
+    } else if (
+      (getPlanDurationDays(value.plannedStartDate, value.plannedEndDate) ?? 0) >
+      MAX_PTW_VALIDITY_DAYS
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['plannedEndDate'],
+        message: `PTW validity cannot exceed ${MAX_PTW_VALIDITY_DAYS} days`,
+      });
+    }
+  });
+
 export type PermitFilters = z.infer<typeof permitFiltersSchema>;
 export type PermitQuery = z.infer<typeof permitQuerySchema>;
+export type DailyRegisterDate = z.infer<typeof dailyRegisterDateSchema>;

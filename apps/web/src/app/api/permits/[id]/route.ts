@@ -1,7 +1,11 @@
 import { createPermitInputSchema } from '@wms/shared';
 import { requireAdmin, requireUser } from '@/lib/auth/session';
 import { ok, route } from '@/lib/http/response';
-import { deletePermit, getPermit, updatePermit } from '@/services/permit.service';
+import {
+  deletePermit,
+  getPermit,
+  updatePermit,
+} from '@/services/permit.service';
 import { getPermitDropdownValues } from '@/services/dropdown-values.service';
 
 export const runtime = 'nodejs';

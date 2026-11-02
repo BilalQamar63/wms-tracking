@@ -9,6 +9,7 @@ export interface FileRecordDoc {
   publicId?: string;
   bytes: number;
   rowCount: number;
+  dailyDate?: string;
   snapshotAvailable?: boolean;
   stats?: ImportStats;
   subContractors?: string[];
@@ -31,10 +32,16 @@ const fileRecordSchema = new Schema<FileRecordDoc>(
     publicId: { type: String },
     bytes: { type: Number, default: 0 },
     rowCount: { type: Number, default: 0 },
+    dailyDate: { type: String, index: true },
     snapshotAvailable: { type: Boolean, default: false },
     stats: {
       type: new Schema(
-        { total: Number, inserted: Number, updated: Number, failed: Number },
+        {
+          total: Number,
+          inserted: Number,
+          updated: Number,
+          failed: Number,
+        },
         { _id: false },
       ),
     },

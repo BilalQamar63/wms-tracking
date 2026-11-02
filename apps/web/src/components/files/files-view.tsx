@@ -161,6 +161,11 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
                           </td>
                           <td className="px-4 py-3">
                             <p className="font-medium text-slate-800">{file.originalName}</p>
+                            {file.dailyDate && (
+                              <p className="text-xs font-medium text-brand-700">
+                                Daily register date: {formatDisplayDate(file.dailyDate)}
+                              </p>
+                            )}
                             {file.kind !== 'add' && (
                               <p className="text-xs text-slate-400">{sizeLabel(file.bytes)}</p>
                             )}

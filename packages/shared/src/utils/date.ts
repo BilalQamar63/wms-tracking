@@ -14,6 +14,8 @@ const MONTH_LABELS = [
   'Dec',
 ];
 
+export const MAX_PTW_VALIDITY_DAYS = 14;
+
 const pad = (n: number): string => String(n).padStart(2, '0');
 
 function isValidYmd(y: number, m: number, d: number): boolean {
@@ -46,7 +48,7 @@ export function addDaysToYmd(ymd: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Counts calendar days between the plan start and end, excluding the start date. */
+/** Counts calendar days in the plan range, including both the start and end dates. */
 export function getPlanDurationDays(startDate: string, endDate: string): number | null {
   const isValidDate = (ymd: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
@@ -55,7 +57,11 @@ export function getPlanDurationDays(startDate: string, endDate: string): number 
   };
   if (!isValidDate(startDate) || !isValidDate(endDate) || endDate < startDate) return null;
 
-  return (ymdToUtcDate(endDate).getTime() - ymdToUtcDate(startDate).getTime()) / 86_400_000;
+  return (
+    (ymdToUtcDate(endDate).getTime() - ymdToUtcDate(startDate).getTime()) /
+      86_400_000 +
+    1
+  );
 }
 
 /** Returns the signed number of calendar days from today until `date`. */
@@ -90,7 +96,7 @@ export function getTodayYmd(now = new Date(), timeZone?: string): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** Formats the number of days between the planned start and end dates. */
+/** Formats the inclusive number of days in the planned validity period. */
 export function formatPlanValidity(
   startDate?: string | Date | null,
   endDate?: string | Date | null,
@@ -100,7 +106,7 @@ export function formatPlanValidity(
   if (!start || !end) return '';
   const days = getPlanDurationDays(start, end);
   if (days === null) return '';
-  return `${days} ${days === 1 ? 'day' : 'days'} left`;
+  return `${days} ${days === 1 ? 'day' : 'days'} validity`;
 }
 
 /** Formats dates as `DD-MMM-YYYY` (e.g. 24-Mar-2026). */

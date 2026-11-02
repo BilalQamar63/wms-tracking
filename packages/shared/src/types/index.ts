@@ -1,3 +1,4 @@
+import type { DailyRegisterFieldKey } from '../constants/daily-register-fields';
 import type { PermitFieldKey } from '../constants/permit-fields';
 import type { Role } from '../constants/options';
 import type { ApprovalContactInput } from '../schemas/approval-contact.schema';
@@ -87,6 +88,16 @@ export interface PermitDTO extends PermitInput {
   updatedAt: string;
 }
 
+export type DailyRegisterInput = Partial<Record<DailyRegisterFieldKey, string>>;
+
+export interface DailyRegisterDTO extends DailyRegisterInput {
+  id: string;
+  date: string;
+  srNo: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Paginated<T> {
   items: T[];
   page: number;
@@ -108,10 +119,7 @@ export interface UserDTO {
   permitCount?: number;
 }
 
-export type SessionUser = Pick<
-  UserDTO,
-  'id' | 'name' | 'email' | 'role' | 'assignedSubContractor'
->;
+export type SessionUser = Pick<UserDTO, 'id' | 'name' | 'email' | 'role' | 'assignedSubContractor'>;
 
 export type FileKind = 'import' | 'export' | 'add';
 
@@ -133,6 +141,7 @@ export interface FileRecordDTO {
   originalName: string;
   bytes: number;
   rowCount: number;
+  dailyDate?: string;
   stats?: ImportStats;
   subContractors?: string[];
   importedPermits?: Array<{

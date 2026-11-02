@@ -20,7 +20,7 @@ export function PlanCountdown({
   if (end < today) {
     return (
       <span className="inline-flex flex-col">
-        <span className="font-semibold text-red-700">Expired</span>
+        <span className="font-semibold text-red-700">Overdue</span>
         <span className="text-xs text-slate-500">Ended {formatDisplayDate(end)}</span>
       </span>
     );

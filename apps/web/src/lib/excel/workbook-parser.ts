@@ -6,6 +6,7 @@ import {
   PTWC_APPROVER_NAME,
   SR_NO_HEADER,
   addDaysToYmd,
+  MAX_PTW_VALIDITY_DAYS,
   createPermitInputSchema,
   parseFlexibleDate,
   type ImportRowError,
@@ -79,6 +80,16 @@ if (PMC_ENDORSEMENT_FIELD) {
 }
 const COMPANY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'company');
 if (COMPANY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Company'), COMPANY_FIELD);
+const NEW_PTW_TYPE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'newPtwType');
+if (NEW_PTW_TYPE_FIELD) HEADER_LOOKUP.set(normalizeHeader('PTW Type'), NEW_PTW_TYPE_FIELD);
+const NEW_PTW_NUMBER_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'newPtwNumber');
+if (NEW_PTW_NUMBER_FIELD) HEADER_LOOKUP.set(normalizeHeader('PTW Number'), NEW_PTW_NUMBER_FIELD);
+const WORK_TITLE_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'workTitle');
+if (WORK_TITLE_FIELD) {
+  for (const header of ['PTW Title', 'PTW Tittle']) {
+    HEADER_LOOKUP.set(normalizeHeader(header), WORK_TITLE_FIELD);
+  }
+}
 const WORK_ACTIVITY_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'workActivity');
 if (WORK_ACTIVITY_FIELD) HEADER_LOOKUP.set(normalizeHeader('Work Activity'), WORK_ACTIVITY_FIELD);
 const PROJECT_NUMBER_FIELD = PERMIT_FIELD_LIST.find((field) => field.key === 'projectNumber');
@@ -264,7 +275,10 @@ export async function parsePermitWorkbook(
       typeof candidate.planValidStartDate === 'string' &&
       typeof candidate.planValidEndDate !== 'string'
     ) {
-      candidate.planValidEndDate = addDaysToYmd(candidate.planValidStartDate, 14);
+      candidate.planValidEndDate = addDaysToYmd(
+        candidate.planValidStartDate,
+        MAX_PTW_VALIDITY_DAYS - 1,
+      );
     }
 
     if (totalRows > MAX_IMPORT_ROWS) {
@@ -278,9 +292,7 @@ export async function parsePermitWorkbook(
       if (!field.contactRole) continue;
       const value = candidate[field.key];
       if (typeof value !== 'string' || !value) continue;
-      rowOptions[field.key] = [
-        ...new Set([...(optionOverrides?.[field.key] ?? []), value]),
-      ];
+      rowOptions[field.key] = [...new Set([...(optionOverrides?.[field.key] ?? []), value])];
     }
 
     const parsed = createPermitInputSchema(rowOptions).safeParse(candidate);

@@ -5,6 +5,7 @@ import {
   PTWC_APPROVER_NAME,
   REGISTER_TITLE,
   SR_NO_HEADER,
+  addDaysToYmd,
   formatPlanValidity,
   toDateInputValue,
   ymdToUtcDate,
@@ -34,8 +35,8 @@ function excelDateExpression(value?: string): string {
 }
 
 function ptwValidityFormula(startDate: string, endDate: string): string {
-  const duration = `${endDate}-${startDate}`;
-  return `IF(OR(${startDate}="",${endDate}=""),"",IF(${duration}<0,"Invalid date range",IF(${duration}=1,"1 day left",${duration}&" days left")))`;
+  const duration = `${endDate}-${startDate}+1`;
+  return `IF(OR(${startDate}="",${endDate}=""),"",IF(${duration}<1,"Invalid date range",IF(${duration}=1,"1 day validity",${duration}&" days validity")))`;
 }
 
 /** Writes every dropdown option list to a hidden sheet and returns the range reference per field. */
@@ -50,18 +51,14 @@ function addListsSheet(
 
   for (const field of fields) {
     const options = optionOverrides?.[field.key] ?? field.options;
-    if (!['select', 'radio', 'multiselect'].includes(field.type) || !options?.length)
-      continue;
+    if (!['select', 'radio', 'multiselect'].includes(field.type) || !options?.length) continue;
     const letter = sheet.getColumn(column).letter;
     sheet.getCell(1, column).value = field.header;
     options.forEach((option, index) => {
       sheet.getCell(index + 2, column).value =
         field.key === 'ptwcStatus' ? `${option} by ${PTWC_APPROVER_NAME}` : option;
     });
-    ranges.set(
-      field.key,
-      `${LISTS_SHEET_NAME}!$${letter}$2:$${letter}$${options.length + 1}`,
-    );
+    ranges.set(field.key, `${LISTS_SHEET_NAME}!$${letter}$2:$${letter}$${options.length + 1}`);
     column += 1;
   }
   return ranges;

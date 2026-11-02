@@ -153,7 +153,11 @@ export function PermitTable({
             )}
           </tr>
           <tr className="bg-slate-50 text-left text-slate-500">
-            <th className={`whitespace-nowrap border-2 border-slate-400 px-4 py-3 ${SECTION_STYLES.planning.cell}`}>Sr No</th>
+            <th
+              className={`whitespace-nowrap border-2 border-slate-400 px-4 py-3 ${SECTION_STYLES.planning.cell}`}
+            >
+              Sr No
+            </th>
             {columns.map((column) => (
               <th
                 key={column.key}
@@ -164,7 +168,11 @@ export function PermitTable({
               </th>
             ))}
             {canManage && (
-              <th className={`border-2 border-slate-400 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}>Actions</th>
+              <th
+                className={`border-2 border-slate-400 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
+              >
+                Actions
+              </th>
             )}
           </tr>
         </thead>

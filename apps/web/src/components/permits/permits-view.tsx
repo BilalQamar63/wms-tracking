@@ -396,6 +396,7 @@ export function PermitsView({
           </div>
         </Modal>
       )}
+
       {(canManage || canImport) && (
         <PermitFormDialog
           open={formOpen}

@@ -11,6 +11,7 @@ import {
 import {
   addDaysToYmd,
   FORM_SECTIONS,
+  MAX_PTW_VALIDITY_DAYS,
   PERMIT_FIELD_LIST,
   getPlanDurationDays,
   getTodayYmd,
@@ -57,6 +58,7 @@ function FieldControl({
   contactsValidating,
   contactsError,
   dropdownValues,
+  planStartDate,
   vertical = false,
 }: {
   field: PermitFieldDef;
@@ -70,6 +72,7 @@ function FieldControl({
   contactsValidating: boolean;
   contactsError?: Error;
   dropdownValues?: PermitDropdownValues;
+  planStartDate?: string;
   vertical?: boolean;
 }) {
   const name = field.key as keyof PermitInput;
@@ -163,11 +166,13 @@ function FieldControl({
           id={id}
           type="date"
           max={
-            field.key === 'planValidStartDate' ||
-            field.key === 'planValidEndDate' ||
-            field.key === 'closedDate'
-              ? undefined
-              : getTodayYmd()
+            field.key === 'planValidEndDate' && planStartDate
+              ? addDaysToYmd(planStartDate, MAX_PTW_VALIDITY_DAYS - 1)
+              : field.key === 'planValidStartDate' || field.key === 'closedDate'
+                ? undefined
+                : field.key === 'planValidEndDate'
+                  ? undefined
+                  : getTodayYmd()
           }
           invalid={invalid}
           {...registration}
@@ -176,7 +181,9 @@ function FieldControl({
             if (field.key === 'planValidStartDate') {
               setValue(
                 'planValidEndDate',
-                event.target.value ? addDaysToYmd(event.target.value, 14) : '',
+                event.target.value
+                  ? addDaysToYmd(event.target.value, MAX_PTW_VALIDITY_DAYS - 1)
+                  : '',
                 {
                   shouldDirty: true,
                   shouldValidate: true,
@@ -292,7 +299,9 @@ export function PermitFormFields({
               ? planStartDate && planEndDate
                 ? 'End date must be on or after start date'
                 : 'Select planned start and end dates'
-              : `${planDuration} ${planDuration === 1 ? 'day' : 'days'} left`}
+              : planDuration > MAX_PTW_VALIDITY_DAYS
+                ? `PTW validity cannot exceed ${MAX_PTW_VALIDITY_DAYS} days`
+              : `${planDuration} ${planDuration === 1 ? 'day' : 'days'} validity`}
           </div>
         ) : (
           <FieldControl
@@ -311,6 +320,7 @@ export function PermitFormFields({
             contactsValidating={contactsValidating}
             contactsError={contactsError}
             dropdownValues={dropdownValues}
+            planStartDate={planStartDate}
           />
         )}
       </FormField>
