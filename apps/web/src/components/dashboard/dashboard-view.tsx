@@ -1,9 +1,24 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, ClipboardList, Clock3, Divide, Users, XCircle } from 'lucide-react';
+import {
+  Building2,
+  ClipboardList,
+  Clock3,
+  Divide,
+  UserCheck,
+  UserRound,
+  UserX,
+  Users,
+  XCircle,
+} from 'lucide-react';
 import useSWR from 'swr';
-import { PTW_TYPES, type PermitDashboardStatsDTO, type PermitFieldKey } from '@wms/shared';
+import {
+  PTW_TYPES,
+  type ApprovalContactStatsDTO,
+  type PermitDashboardStatsDTO,
+  type PermitFieldKey,
+} from '@wms/shared';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ExcelFieldPicker, ALL_FIELD_KEYS } from '@/components/ui/excel-field-picker';
@@ -30,7 +45,13 @@ const EXPORT_STATUS_OPTIONS = [
   { value: 'overdue', label: 'Overdue' },
 ] as const;
 
-export function DashboardView({ canExport }: { canExport: boolean }) {
+export function DashboardView({
+  canExport,
+  showAuthorizationStats,
+}: {
+  canExport: boolean;
+  showAuthorizationStats: boolean;
+}) {
   const toast = useToast();
   const { data: dropdownValues } = useDropdownValues();
   const availablePtwTypes = dropdownValues?.newPtwType ?? PTW_TYPES;
@@ -45,6 +66,11 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
   const effectiveFilters = { ...filters, search: debouncedSearch };
   const statsUrl = `/api/dashboard/stats${toQueryString(effectiveFilters)}`;
   const { data, error, isLoading } = useSWR<PermitDashboardStatsDTO>(statsUrl, swrFetcher);
+  const { data: authorizationStats, error: authorizationStatsError } =
+    useSWR<ApprovalContactStatsDTO>(
+      showAuthorizationStats ? '/api/approval-contacts/stats' : null,
+      swrFetcher,
+    );
 
   useEffect(() => {
     if (dropdownValues?.newPtwType) setSelectedPtwTypes([...dropdownValues.newPtwType]);
@@ -99,6 +125,38 @@ export function DashboardView({ canExport }: { canExport: boolean }) {
           title="MERAM MASTER GWMS PTW DASHBOARD"
           description="Overview of permits grouped by Main Contractor and Sub Contractor."
         />
+
+        {showAuthorizationStats && (
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold text-slate-900">Authorized people</h2>
+            {authorizationStatsError ? (
+              <EmptyState title="Could not load authorization totals">
+                {authorizationStatsError.message}
+              </EmptyState>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <DashboardStatCard
+                  label="Total authorized"
+                  value={authorizationStats?.total}
+                  icon={UserRound}
+                  tone="blue"
+                />
+                <DashboardStatCard
+                  label="Active"
+                  value={authorizationStats?.active}
+                  icon={UserCheck}
+                  tone="green"
+                />
+                <DashboardStatCard
+                  label="Deactive"
+                  value={authorizationStats?.inactive}
+                  icon={UserX}
+                  tone="slate"
+                />
+              </div>
+            )}
+          </section>
+        )}
 
         {error ? (
           <EmptyState title="Could not load dashboard">{error.message}</EmptyState>

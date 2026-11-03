@@ -29,8 +29,6 @@ import type { ParsedPermitRow } from '@/lib/excel/workbook-parser';
 import {
   assertPermitApprovalContacts,
   createApprovalContactSelectionValidator,
-  ensureImportedApprovalContact,
-  ensureImportedPermitApprovalContacts,
 } from './approval-contact.service';
 
 const POPULATE = [
@@ -495,15 +493,12 @@ export async function applyReviewedImport(
   }
 
   const operations: Record<string, unknown>[] = [];
-  const approvalContactsForRows: PermitInput[] = [];
-  const approvalContactsForUpdates: string[] = [];
   for (const preview of previewRows) {
     const parsedRow = parsedByNumber.get(preview.rowNumber);
     if (!parsedRow) continue;
 
     if (preview.action === 'add') {
       if (!selectedAdds.has(preview.rowNumber)) continue;
-      approvalContactsForRows.push(parsedRow.data);
       operations.push({
         insertOne: {
           document: {
@@ -549,9 +544,6 @@ export async function applyReviewedImport(
       if (value === undefined || value === '') {
         throw badRequest(`Field "${field.header}" has no incoming value`);
       }
-      if (field.contactRole && typeof value === 'string') {
-        approvalContactsForUpdates.push(value);
-      }
       set[field.key] = field.type === 'date' ? ymdToUtcDate(value as string) : value;
       expectedCurrentValues[field.key] = existingPermit[field.key as keyof PermitDoc] ?? null;
     }
@@ -567,13 +559,6 @@ export async function applyReviewedImport(
         update,
       },
     });
-  }
-
-  for (const input of approvalContactsForRows) {
-    await ensureImportedPermitApprovalContacts(input);
-  }
-  for (const contact of approvalContactsForUpdates) {
-    await ensureImportedApprovalContact(contact);
   }
 
   const insertOperations = operations.filter((operation) => 'insertOne' in operation);

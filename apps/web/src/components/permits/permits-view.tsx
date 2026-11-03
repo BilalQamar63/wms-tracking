@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { mutate } from 'swr';
+import useSWR from 'swr';
 import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { PERMIT_FIELD_LIST, PTW_TYPES, type PermitDTO, type PermitFieldKey } from '@wms/shared';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { useToast } from '@/components/ui/toast';
 import { EMPTY_PERMIT_FILTERS, usePermits, type PermitFilterState } from '@/hooks/use-permits';
 import { useDebounce } from '@/hooks/use-debounce';
-import { apiFetch, downloadFromApi, toQueryString } from '@/lib/api-client';
+import { apiFetch, downloadFromApi, swrFetcher, toQueryString } from '@/lib/api-client';
 import { ImportDialog } from './import-dialog';
 import { PermitFilters } from './permit-filters';
 import { PermitFormDialog } from './permit-form-dialog';
@@ -43,9 +44,17 @@ export function PermitsView({
 }) {
   const toast = useToast();
   const { data: dropdownValues } = useDropdownValues();
+  const {
+    data: userPreferences,
+    isLoading: preferencesLoading,
+  } = useSWR<{ permitTableFields: string[] | null }>('/api/auth/preferences', swrFetcher);
   const [filters, setFilters] = useState<PermitFilterState>(EMPTY_PERMIT_FILTERS);
   const [page, setPage] = useState(1);
   const [visibleFields, setVisibleFields] = useState<PermitFieldKey[]>(ALL_TABLE_FIELDS);
+  const fieldSaveQueue = useRef(Promise.resolve());
+  const preferencesInitialized = useRef(false);
+  const lastSavedFields = useRef<PermitFieldKey[]>(ALL_TABLE_FIELDS);
+  const fieldSaveSequence = useRef(0);
   const [selectedTableField, setSelectedTableField] = useState<PermitFieldKey | null>(null);
   const [tableNavigationVersion, setTableNavigationVersion] = useState(0);
   const [selectedExportFields, setSelectedExportFields] =
@@ -74,6 +83,44 @@ export function PermitsView({
       setSelectedExportPtwTypes([...dropdownValues.newPtwType]);
     }
   }, [dropdownValues]);
+
+  useEffect(() => {
+    if (!userPreferences || preferencesInitialized.current) return;
+    const savedFields = userPreferences.permitTableFields;
+    const fields =
+      savedFields === null
+        ? ALL_TABLE_FIELDS
+        : ALL_TABLE_FIELDS.filter((field) => savedFields.includes(field));
+    preferencesInitialized.current = true;
+    lastSavedFields.current = fields;
+    setVisibleFields(fields);
+  }, [userPreferences]);
+
+  function saveVisibleFields(fields: PermitFieldKey[]) {
+    const sequence = ++fieldSaveSequence.current;
+    setVisibleFields(fields);
+    fieldSaveQueue.current = fieldSaveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const preferences = await apiFetch<{ permitTableFields: string[] }>(
+            '/api/auth/preferences',
+            {
+              method: 'PUT',
+              body: JSON.stringify({ permitTableFields: fields }),
+            },
+          );
+          lastSavedFields.current = ALL_TABLE_FIELDS.filter((field) =>
+            preferences.permitTableFields.includes(field),
+          );
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Could not save table fields');
+          if (sequence === fieldSaveSequence.current) {
+            setVisibleFields(lastSavedFields.current);
+          }
+        }
+      });
+  }
 
   // Any filter change goes back to page 1.
   useEffect(
@@ -290,7 +337,11 @@ export function PermitsView({
           Current register — new Excel imports are applied here after review.
         </div>
         <PermitFilters value={filters} onChange={setFilters} />
-        <PermitColumnPicker selectedFields={visibleFields} onChange={setVisibleFields} />
+        <PermitColumnPicker
+          selectedFields={visibleFields}
+          onChange={saveVisibleFields}
+          disabled={preferencesLoading}
+        />
         <PermitColumnNavigator
           selectedField={selectedTableField}
           visibleFields={visibleFields}

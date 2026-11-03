@@ -1,4 +1,4 @@
-import { Schema, model, models, type Model, type Types } from 'mongoose';
+import mongoose, { Schema, model, models, type Model, type Types } from 'mongoose';
 import { USER_ROLES, type Role } from '@wms/shared';
 
 export interface UserDoc {
@@ -8,6 +8,7 @@ export interface UserDoc {
   passwordHash: string;
   role: Role;
   assignedSubContractor?: string;
+  permitTableFields?: string[];
   isActive: boolean;
   /** Soft-delete flag – records created by the user keep a valid reference. */
   isDeleted: boolean;
@@ -27,6 +28,7 @@ const userSchema = new Schema<UserDoc>(
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: USER_ROLES, default: 'user', required: true },
     assignedSubContractor: { type: String, trim: true },
+    permitTableFields: { type: [String], default: undefined },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,
@@ -40,5 +42,10 @@ const userSchema = new Schema<UserDoc>(
 // Email must be unique among live users only, so a deleted user's email can be re-used.
 userSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { isDeleted: false } });
 
-export const UserModel: Model<UserDoc> =
-  (models.User as Model<UserDoc> | undefined) ?? model<UserDoc>('User', userSchema);
+export const UserModel: Model<UserDoc> = (() => {
+  const cachedModel = models.User as Model<UserDoc> | undefined;
+  if (cachedModel && !cachedModel.schema.path('permitTableFields')) {
+    mongoose.deleteModel('User');
+  }
+  return (models.User as Model<UserDoc> | undefined) ?? model<UserDoc>('User', userSchema);
+})();

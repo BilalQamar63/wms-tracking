@@ -8,10 +8,12 @@ import {
   ChevronDown,
   CalendarDays,
   FileSpreadsheet,
+  History,
   LayoutDashboard,
   LogOut,
   SlidersHorizontal,
   Users,
+  UserRound,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { SessionUser } from '@wms/shared';
@@ -22,12 +24,6 @@ const PERMIT_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
   { href: '/permits', label: 'PTW Register', icon: ClipboardList, adminOnly: false },
   { href: '/files', label: 'Import / Export History', icon: FileSpreadsheet, adminOnly: true },
-  {
-    href: '/authorization-list',
-    label: 'Authorization List',
-    icon: ClipboardCheck,
-    adminOnly: true,
-  },
 ] as const;
 
 export function Sidebar({ user }: { user: SessionUser }) {
@@ -39,9 +35,13 @@ export function Sidebar({ user }: { user: SessionUser }) {
       pathname.startsWith('/permits') ||
       pathname.startsWith('/daily-register') ||
       pathname.startsWith('/files') ||
-      pathname.startsWith('/authorization-list'),
+      pathname.startsWith('/authorization-list') ||
+      pathname.startsWith('/authorization-history'),
   );
   const [fieldsOpen, setFieldsOpen] = useState(pathname.startsWith('/dropdown-values'));
+  const [authorizedPeopleOpen, setAuthorizedPeopleOpen] = useState(
+    pathname.startsWith('/authorization-list') || pathname.startsWith('/authorization-history'),
+  );
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
@@ -103,6 +103,54 @@ export function Sidebar({ user }: { user: SessionUser }) {
             </div>
           )}
         </div>
+
+        {user.role === 'admin' && (
+          <div>
+            <button
+              type="button"
+              aria-expanded={authorizedPeopleOpen}
+              aria-controls="authorized-people-links"
+              onClick={() => setAuthorizedPeopleOpen((open) => !open)}
+              className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
+            >
+              <UserRound className="h-4 w-4" />
+              <span className="flex-1">Authorized People</span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  authorizedPeopleOpen && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
+            {authorizedPeopleOpen && (
+              <div id="authorized-people-links" className="mt-1 flex flex-col gap-1 md:pl-3">
+                {[
+                  { href: '/authorization-list', label: 'Authorized List', icon: ClipboardCheck },
+                  {
+                    href: '/authorization-history',
+                    label: 'Import / Export History',
+                    icon: History,
+                  },
+                ].map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                      isActive(href)
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-slate-600 hover:bg-slate-100',
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {user.role === 'admin' && (
           <div>

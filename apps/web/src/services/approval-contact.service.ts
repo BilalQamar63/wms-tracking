@@ -1,8 +1,10 @@
 import type {
   ApprovalContactDTO,
+  ApprovalContactStatsDTO,
   ApprovalContactInput,
   ApprovalContactOptionDTO,
   ApprovalContactRole,
+  Paginated,
   PermitInput,
 } from '@wms/shared';
 import { PERMIT_FIELD_LIST } from '@wms/shared';
@@ -12,6 +14,7 @@ import { assertObjectId } from '@/lib/utils/object-id';
 import { ApprovalContactModel, type ApprovalContactDoc } from '@/models/ApprovalContact';
 import { PermitModel } from '@/models/Permit';
 import { normalizeAuthorizationDate } from './authorization-date';
+import { escapeRegex } from '@/lib/utils/object-id';
 
 const CONTACT_FIELDS = ['performingAuthority', 'validationBy', 'approvedBy'] as const;
 
@@ -60,12 +63,78 @@ async function assertContactCanBeChanged(contact: ApprovalContactDoc): Promise<v
   }
 }
 
-export async function listApprovalContacts(): Promise<ApprovalContactDTO[]> {
+export async function listApprovalContacts(
+  query: {
+    page: number;
+    limit: number;
+    search?: string;
+    position?: string;
+    wmsRole?: string;
+  },
+): Promise<Paginated<ApprovalContactDTO>> {
   await connectDb();
-  const docs = await ApprovalContactModel.find({})
-    .sort({ name: 1, phone: 1 })
-    .lean<ApprovalContactDoc[]>();
-  return docs.map(toApprovalContactDTO);
+  const filter: Record<string, unknown> = {};
+  if (query.search) {
+    const search = new RegExp(escapeRegex(query.search), 'i');
+    filter.$or = ['name', 'approvalFormNo', 'emiratesId', 'phone', 'position'].map((field) => ({
+      [field]: search,
+    }));
+  }
+  if (query.position) filter.position = query.position;
+  if (query.wmsRole) filter.wmsRole = query.wmsRole;
+  const [docs, total] = await Promise.all([
+    ApprovalContactModel.aggregate<ApprovalContactDoc>([
+      { $match: filter },
+      {
+        $addFields: {
+          _srNoSort: {
+            $convert: {
+              input: { $trim: { input: { $ifNull: ['$srNo', ''] } } },
+              to: 'long',
+              onError: Number.MAX_SAFE_INTEGER,
+              onNull: Number.MAX_SAFE_INTEGER,
+            },
+          },
+        },
+      },
+      { $sort: { _srNoSort: 1, _id: 1 } },
+      { $skip: (query.page - 1) * query.limit },
+      { $limit: query.limit },
+      { $project: { _srNoSort: 0 } },
+    ]),
+    ApprovalContactModel.countDocuments(filter),
+  ]);
+  return {
+    items: docs.map(toApprovalContactDTO),
+    page: query.page,
+    limit: query.limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / query.limit)),
+  };
+}
+
+export async function getApprovalContactStats(): Promise<ApprovalContactStatsDTO> {
+  await connectDb();
+  const [stats] = await ApprovalContactModel.aggregate<ApprovalContactStatsDTO>([
+    {
+      $group: {
+        _id: null,
+        total: { $sum: 1 },
+        active: {
+          $sum: {
+            $cond: [{ $ne: [{ $toLower: { $ifNull: ['$status', 'active'] } }, 'inactive'] }, 1, 0],
+          },
+        },
+        inactive: {
+          $sum: {
+            $cond: [{ $eq: [{ $toLower: { $ifNull: ['$status', 'active'] } }, 'inactive'] }, 1, 0],
+          },
+        },
+      },
+    },
+    { $project: { _id: 0, total: 1, active: 1, inactive: 1 } },
+  ]);
+  return stats ?? { total: 0, active: 0, inactive: 0 };
 }
 
 export async function listApprovalContactOptions(): Promise<ApprovalContactOptionDTO[]> {

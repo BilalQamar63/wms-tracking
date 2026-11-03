@@ -8,9 +8,10 @@ const ALL_TABLE_FIELDS = TABLE_FIELDS.map((field) => field.key as PermitFieldKey
 interface Props {
   selectedFields: readonly PermitFieldKey[];
   onChange: (fields: PermitFieldKey[]) => void;
+  disabled?: boolean;
 }
 
-export function PermitColumnPicker({ selectedFields, onChange }: Props) {
+export function PermitColumnPicker({ selectedFields, onChange, disabled = false }: Props) {
   function toggleField(key: PermitFieldKey) {
     onChange(
       selectedFields.includes(key)
@@ -21,7 +22,13 @@ export function PermitColumnPicker({ selectedFields, onChange }: Props) {
 
   return (
     <details className="relative min-w-0 border-b border-slate-200 px-3 py-3 sm:px-4">
-      <summary className="inline-flex max-w-full cursor-pointer list-none items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+      <summary
+        aria-disabled={disabled}
+        onClick={(event) => {
+          if (disabled) event.preventDefault();
+        }}
+        className="inline-flex max-w-full cursor-pointer list-none items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 aria-disabled:cursor-wait"
+      >
         Table fields ({selectedFields.length}/{ALL_TABLE_FIELDS.length})
       </summary>
       <div className="absolute left-2 right-2 z-20 mt-2 max-h-[70dvh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg sm:left-4 sm:right-auto sm:max-h-[28rem] sm:w-80">
@@ -30,6 +37,7 @@ export function PermitColumnPicker({ selectedFields, onChange }: Props) {
           <div className="flex shrink-0 gap-3">
             <button
               type="button"
+              disabled={disabled}
               className="text-xs font-medium text-brand-700 hover:text-brand-900"
               onClick={() => onChange(ALL_TABLE_FIELDS)}
             >
@@ -37,6 +45,7 @@ export function PermitColumnPicker({ selectedFields, onChange }: Props) {
             </button>
             <button
               type="button"
+              disabled={disabled}
               className="text-xs font-medium text-brand-700 hover:text-brand-900"
               onClick={() => onChange([])}
             >
@@ -54,6 +63,7 @@ export function PermitColumnPicker({ selectedFields, onChange }: Props) {
               >
                 <input
                   type="checkbox"
+                  disabled={disabled}
                   checked={selectedFields.includes(key)}
                   onChange={() => toggleField(key)}
                   className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500"

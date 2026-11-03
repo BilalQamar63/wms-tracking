@@ -179,9 +179,10 @@ export function ImportDialog({
                 <span>
                   {canUpdate ? (
                     <>
-                      Rows with a matching <b>New PTW Number</b> are compared with the current
-                      register. New permits can be selected for addition. Missing or unrecognized
-                      Main Contractor values default to JV-TR/NMDC.
+                      New PTW Numbers are checked for duplicates in the workbook. Rows with a
+                      matching number in the current register are compared; new permits can be
+                      selected for addition. Other fields may be incomplete or use different
+                      formats. Invalid dates are left blank.
                     </>
                   ) : (
                     <>

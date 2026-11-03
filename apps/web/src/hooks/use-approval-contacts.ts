@@ -1,7 +1,21 @@
 import useSWR from 'swr';
-import type { ApprovalContactDTO } from '@wms/shared';
-import { swrFetcher } from '@/lib/api-client';
+import type { ApprovalContactDTO, Paginated } from '@wms/shared';
+import { swrFetcher, toQueryString } from '@/lib/api-client';
 
-export function useApprovalContacts() {
-  return useSWR<ApprovalContactDTO[]>('/api/approval-contacts', swrFetcher);
+export interface ApprovalContactFilters {
+  search: string;
+  position: string;
+  wmsRole: string;
+}
+
+export function useApprovalContacts(
+  page: number,
+  limit = 20,
+  filters: ApprovalContactFilters = { search: '', position: '', wmsRole: '' },
+) {
+  return useSWR<Paginated<ApprovalContactDTO>>(
+    `/api/approval-contacts${toQueryString({ page, limit, ...filters })}`,
+    swrFetcher,
+    { keepPreviousData: true },
+  );
 }

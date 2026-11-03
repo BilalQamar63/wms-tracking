@@ -67,6 +67,26 @@ export interface ApprovalContactImportResult {
   skipped: number;
 }
 
+export interface ApprovalContactHistoryDTO {
+  id: string;
+  kind: 'import' | 'export';
+  fileName: string;
+  bytes: number;
+  rowCount: number;
+  added?: number;
+  updated?: number;
+  unchanged?: number;
+  skipped?: number;
+  createdBy?: UserRef;
+  createdAt: string;
+}
+
+export interface ApprovalContactStatsDTO {
+  total: number;
+  active: number;
+  inactive: number;
+}
+
 /** Form / API payload; dates are `YYYY-MM-DD`, and certificates can be selected in multiples. */
 export type PermitInput = {
   [K in PermitFieldKey]?: K extends 'certificateType' ? string[] : string;

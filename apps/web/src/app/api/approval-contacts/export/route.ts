@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export const GET = route(async () => {
-  await requireAdmin();
-  const buffer = await exportApprovalContacts();
+  const user = await requireAdmin();
   const fileName = `Approval-Contacts-${timestampForFileName()}.xlsx`;
+  const buffer = await exportApprovalContacts(user.id, fileName);
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': XLSX_MIME,

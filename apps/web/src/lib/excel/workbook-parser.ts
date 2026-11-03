@@ -7,7 +7,6 @@ import {
   SR_NO_HEADER,
   addDaysToYmd,
   MAX_PTW_VALIDITY_DAYS,
-  createPermitInputSchema,
   parseFlexibleDate,
   type ImportRowError,
   type PermitInput,
@@ -27,6 +26,15 @@ export interface ParseResult {
   errors: ImportRowError[];
   /** Non-empty data rows found in the sheet. */
   totalRows: number;
+}
+
+function toPermitInput(candidate: Record<string, string | string[]>): PermitInput {
+  const input: PermitInput = {};
+  for (const field of PERMIT_FIELD_LIST) {
+    const value = candidate[field.key];
+    if (value !== undefined) Object.assign(input, { [field.key]: value });
+  }
+  return input;
 }
 
 const normalizeHeader = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -216,7 +224,6 @@ export async function parsePermitWorkbook(
   for (let r = header.row + 1; r <= sheet.rowCount; r += 1) {
     const excelRow = sheet.getRow(r);
     const candidate: Record<string, string | string[]> = {};
-    const messages: string[] = [];
     let hasData = false;
 
     header.columns.forEach((key, colNumber) => {
@@ -232,7 +239,6 @@ export async function parsePermitWorkbook(
       if (field.type === 'date') {
         const ymd = parseFlexibleDate(primitive instanceof Date ? primitive : text);
         if (ymd) candidate[field.key] = ymd;
-        else messages.push(`${field.header}: "${text}" is not a valid date`);
       } else if (field.type === 'multiselect' && (optionOverrides?.[field.key] ?? field.options)) {
         const options = optionOverrides?.[field.key] ?? field.options ?? [];
         const values = text
@@ -252,10 +258,7 @@ export async function parsePermitWorkbook(
           field.key === 'ptwcStatus'
             ? canonicalPtwcStatus(text, options)
             : canonicalOption(text, options);
-        candidate[field.key] =
-          field.key === 'company' && field.defaultValue && !options.includes(normalized)
-            ? field.defaultValue
-            : normalized;
+        candidate[field.key] = normalized;
       } else {
         candidate[field.key] = text;
       }
@@ -287,27 +290,7 @@ export async function parsePermitWorkbook(
       );
     }
 
-    const rowOptions = { ...optionOverrides };
-    for (const field of PERMIT_FIELD_LIST) {
-      if (!field.contactRole) continue;
-      const value = candidate[field.key];
-      if (typeof value !== 'string' || !value) continue;
-      rowOptions[field.key] = [...new Set([...(optionOverrides?.[field.key] ?? []), value])];
-    }
-
-    const parsed = createPermitInputSchema(rowOptions).safeParse(candidate);
-    if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = PERMIT_FIELD_LIST.find((f) => f.key === issue.path[0]);
-        messages.push(`${field?.header ?? 'Row'}: ${issue.message}`);
-      }
-    }
-
-    if (messages.length > 0 || !parsed.success) {
-      errors.push({ row: r, messages });
-    } else {
-      rows.push({ rowNumber: r, data: parsed.data });
-    }
+    rows.push({ rowNumber: r, data: toPermitInput(candidate) });
   }
 
   const rowsByPtwNumber = new Map<string, ParsedPermitRow[]>();

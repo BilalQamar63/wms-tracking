@@ -13,6 +13,7 @@ import {
 import { badRequest, conflict } from '@/lib/http/errors';
 import { connectDb } from '@/lib/db/mongoose';
 import { ApprovalContactModel, type ApprovalContactDoc } from '@/models/ApprovalContact';
+import { ApprovalContactHistoryModel } from '@/models/ApprovalContactHistory';
 import { PermitModel } from '@/models/Permit';
 import { normalizeAuthorizationText, normalizeIdentityKey } from './approval-contact.service';
 import { normalizeAuthorizationDate } from './authorization-date';
@@ -440,6 +441,13 @@ export async function previewApprovalContactImport(
 export async function commitApprovalContactImport(
   records: ApprovalContactImportRecord[],
   updateExisting: boolean,
+  file: {
+    fileName: string;
+    bytes: number;
+    rowCount: number;
+    invalidRows: number;
+    createdBy: string;
+  },
 ): Promise<ApprovalContactImportResult> {
   const validRecords: ApprovalContactImportRecord[] = [];
   const seenKeys = new Set<string>();
@@ -584,10 +592,27 @@ export async function commitApprovalContactImport(
     }
   }
 
-  return { added: additions.length, updated: updates.length, unchanged, skipped };
+  const result = {
+    added: additions.length,
+    updated: updates.length,
+    unchanged,
+    skipped: skipped + file.invalidRows,
+  };
+  await ApprovalContactHistoryModel.create({
+    kind: 'import',
+    fileName: file.fileName,
+    bytes: file.bytes,
+    rowCount: file.rowCount,
+    ...result,
+    createdBy: file.createdBy,
+  });
+  return result;
 }
 
-export async function exportApprovalContacts(): Promise<Buffer> {
+export async function exportApprovalContacts(
+  createdBy: string,
+  fileName: string,
+): Promise<Buffer> {
   await connectDb();
   const docs = await ApprovalContactModel.find({})
     .sort({ srNo: 1, _id: 1 })
@@ -631,5 +656,13 @@ export async function exportApprovalContacts(): Promise<Buffer> {
     }
     worksheet.addRow(row);
   }
-  return Buffer.from(await workbook.xlsx.writeBuffer());
+  const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+  await ApprovalContactHistoryModel.create({
+    kind: 'export',
+    fileName,
+    bytes: buffer.byteLength,
+    rowCount: docs.length,
+    createdBy,
+  });
+  return buffer;
 }

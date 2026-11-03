@@ -18,6 +18,10 @@ const commitSchema = z.object({
     )
     .max(MAX_IMPORT_ROWS),
   updateExisting: z.boolean(),
+  fileName: z.string().trim().min(1).max(255),
+  bytes: z.number().int().min(0).max(50 * 1024 * 1024),
+  rowCount: z.number().int().min(0).max(MAX_IMPORT_ROWS),
+  invalidRows: z.number().int().min(0).max(MAX_IMPORT_ROWS),
 });
 
 export const runtime = 'nodejs';
@@ -25,10 +29,16 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export const POST = route(async (req) => {
-  await requireAdmin();
+  const user = await requireAdmin();
   const parsed = commitSchema.safeParse(await req.json());
   if (!parsed.success) throw badRequest('Invalid contact import confirmation');
   return ok(
-    await commitApprovalContactImport(parsed.data.records, parsed.data.updateExisting),
+    await commitApprovalContactImport(parsed.data.records, parsed.data.updateExisting, {
+      fileName: parsed.data.fileName,
+      bytes: parsed.data.bytes,
+      rowCount: parsed.data.rowCount,
+      invalidRows: parsed.data.invalidRows,
+      createdBy: user.id,
+    }),
   );
 });

@@ -18,9 +18,11 @@ import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/ui/page-header';
+import { Pagination } from '@/components/ui/pagination';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
-import { useApprovalContacts } from '@/hooks/use-approval-contacts';
+import { useApprovalContacts, type ApprovalContactFilters } from '@/hooks/use-approval-contacts';
+import { useDebounce } from '@/hooks/use-debounce';
 import { apiFetch, downloadFromApi } from '@/lib/api-client';
 import { useDropdownValues } from '@/hooks/use-dropdown-values';
 
@@ -39,6 +41,8 @@ const EMPTY_CONTACT: ApprovalContactInput = {
   status: 'Active',
   remarks: '',
 };
+const PAGE_SIZE = 20;
+const EMPTY_FILTERS: ApprovalContactFilters = { search: '', position: '', wmsRole: '' };
 
 const CONTACT_FORM_FIELDS: Array<{
   key: keyof ApprovalContactInput;
@@ -81,10 +85,16 @@ function contactInputFrom(contact?: ApprovalContactDTO): ApprovalContactInput {
 
 export function AuthorizationListView() {
   const toast = useToast();
-  const { data, error, isLoading, mutate: refresh } = useApprovalContacts();
-  const {
-    data: dropdownValues,
-  } = useDropdownValues();
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const debouncedSearch = useDebounce(filters.search);
+  const effectiveFilters = { ...filters, search: debouncedSearch };
+  const { data, error, isLoading, mutate: refresh } = useApprovalContacts(
+    page,
+    PAGE_SIZE,
+    effectiveFilters,
+  );
+  const { data: dropdownValues } = useDropdownValues();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ApprovalContactDTO | null>(null);
   const [deleting, setDeleting] = useState<ApprovalContactDTO | null>(null);
@@ -96,10 +106,14 @@ export function AuthorizationListView() {
   const [importBusy, setImportBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => setPage(1), [debouncedSearch, filters.position, filters.wmsRole]);
   useEffect(() => {
     if (!formOpen) return;
     setContactForm(contactInputFrom(editing ?? undefined));
   }, [editing, formOpen]);
+  useEffect(() => {
+    if (data && page > data.totalPages) setPage(data.totalPages);
+  }, [data, page]);
 
   async function refreshContacts() {
     await Promise.all([
@@ -171,6 +185,10 @@ export function AuthorizationListView() {
           body: JSON.stringify({
             records: importPreview.records,
             updateExisting,
+            fileName: importPreview.fileName,
+            bytes: importFileRef.current?.files?.[0]?.size ?? 0,
+            rowCount: importPreview.totalRows,
+            invalidRows: importPreview.errors.length,
           }),
         },
       );
@@ -179,7 +197,11 @@ export function AuthorizationListView() {
       );
       setImportPreview(null);
       if (importFileRef.current) importFileRef.current.value = '';
-      await Promise.all([refreshContacts(), mutate('/api/dropdown-values')]);
+      await Promise.all([
+        refreshContacts(),
+        mutate('/api/dropdown-values'),
+        mutate((key) => typeof key === 'string' && key.startsWith('/api/approval-contacts/history')),
+      ]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not import authorizations');
     } finally {
@@ -192,6 +214,7 @@ export function AuthorizationListView() {
     try {
       await downloadFromApi('/api/approval-contacts/export', 'Authorization-List.xlsx');
       toast.success('Authorization workbook downloaded');
+      await mutate((key) => typeof key === 'string' && key.startsWith('/api/approval-contacts/history'));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not export authorizations');
     } finally {
@@ -235,7 +258,9 @@ export function AuthorizationListView() {
     }
   }
 
-  const allSelected = !!data?.length && data.every((contact) => selectedIds.has(contact.id));
+  const contacts = data?.items ?? [];
+  const allSelected =
+    contacts.length > 0 && contacts.every((contact) => selectedIds.has(contact.id));
 
   return (
     <>
@@ -283,88 +308,116 @@ export function AuthorizationListView() {
             </Button>
           </div>
         </div>
+        <div className="mb-3 grid gap-2 sm:grid-cols-3">
+          <Input
+            type="search"
+            placeholder="Search name, approval no., Emirates ID, mobile…"
+            aria-label="Search authorized people"
+            value={filters.search}
+            onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+          />
+          <Select
+            aria-label="Filter by WMS role"
+            options={dropdownValues?.wmsRole ?? []}
+            placeholder="All WMS roles"
+            value={filters.wmsRole}
+            onChange={(event) => setFilters((current) => ({ ...current, wmsRole: event.target.value }))}
+          />
+          <Select
+            aria-label="Filter by position"
+            options={dropdownValues?.position ?? []}
+            placeholder="All positions"
+            value={filters.position}
+            onChange={(event) => setFilters((current) => ({ ...current, position: event.target.value }))}
+          />
+        </div>
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           {error ? (
             <EmptyState title="Could not load authorizations">{error.message}</EmptyState>
           ) : isLoading ? (
             <EmptyState title="Loading…" />
-          ) : data?.length ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-[2200px] divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-slate-50 px-3 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all authorizations"
-                        checked={allSelected}
-                        onChange={(event) =>
-                          setSelectedIds(
-                            event.target.checked
-                              ? new Set(data.map((contact) => contact.id))
-                              : new Set(),
-                          )
-                        }
-                      />
-                    </th>
-                    <th className="px-4 py-3">Sr #</th>
-                    <th className="px-4 py-3">Approval Form No</th>
-                    <th className="px-4 py-3">Company</th>
-                    <th className="px-4 py-3">Full Name</th>
-                    <th className="px-4 py-3">Emirates ID/JVUID No</th>
-                    <th className="px-4 py-3">Mobile Number</th>
-                    <th className="px-4 py-3">Position</th>
-                    <th className="px-4 py-3">WMS Role</th>
-                    <th className="px-4 py-3">Institute Name</th>
-                    <th className="px-4 py-3">JV Assessment Date</th>
-                    <th className="px-4 py-3">WMS Validity</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Remarks</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {data.map((contact) => (
-                    <tr key={contact.id} className="hover:bg-slate-50/70">
-                      <td className="sticky left-0 bg-white px-3 py-3">
+          ) : data && contacts.length ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-[2200px] border-collapse text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="sticky left-0 z-10 border border-slate-400 bg-slate-50 px-3 py-3">
                         <input
                           type="checkbox"
-                          aria-label={`Select ${contact.name}`}
-                          checked={selectedIds.has(contact.id)}
-                          onChange={(event) =>
+                          aria-label="Select all authorizations"
+                          checked={allSelected}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
                             setSelectedIds((current) => {
                               const next = new Set(current);
-                              if (event.target.checked) next.add(contact.id);
-                              else next.delete(contact.id);
+                              for (const contact of contacts) {
+                                if (checked) next.add(contact.id);
+                                else next.delete(contact.id);
+                              }
                               return next;
-                            })
-                          }
+                            });
+                          }}
                         />
-                      </td>
-                      {[
-                        contact.srNo,
-                        contact.approvalFormNo,
-                        contact.company,
-                        contact.name,
-                        contact.emiratesId,
-                        contact.phone,
-                        contact.position,
-                        contact.wmsRole,
-                        contact.instituteName,
-                        contact.jvAssessmentDate,
-                        contact.wmsValidity,
-                        contact.status,
-                        contact.remarks,
-                      ].map((value, index) => (
-                        <td
-                          key={index}
-                          title={value || undefined}
-                          className={`${index === 3 ? 'font-medium text-slate-900' : ''} whitespace-nowrap px-4 py-3`}
-                        >
-                          {value || '—'}
+                      </th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Sr #</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Approval Form No</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Company</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Full Name</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Emirates ID/JVUID No</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Mobile Number</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Position</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">WMS Role</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Institute Name</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">JV Assessment Date</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">WMS Validity</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Status</th>
+                      <th className="whitespace-nowrap border border-slate-400 px-4 py-3">Remarks</th>
+                      <th className="sticky right-0 z-10 whitespace-nowrap border border-slate-400 bg-slate-50 px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {contacts.map((contact) => (
+                      <tr key={contact.id} className="hover:bg-slate-50/70">
+                        <td className="sticky left-0 border border-slate-400 bg-white px-3 py-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${contact.name}`}
+                            checked={selectedIds.has(contact.id)}
+                            onChange={(event) =>
+                              setSelectedIds((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(contact.id);
+                                else next.delete(contact.id);
+                                return next;
+                              })
+                            }
+                          />
                         </td>
-                      ))}
-                      <td className="sticky right-0 whitespace-nowrap bg-white px-2 py-2 text-right">
+                        {[
+                          contact.srNo,
+                          contact.approvalFormNo,
+                          contact.company,
+                          contact.name,
+                          contact.emiratesId,
+                          contact.phone,
+                          contact.position,
+                          contact.wmsRole,
+                          contact.instituteName,
+                          contact.jvAssessmentDate,
+                          contact.wmsValidity,
+                          contact.status,
+                          contact.remarks,
+                        ].map((value, index) => (
+                          <td
+                            key={index}
+                            title={value || undefined}
+                            className={`${index === 3 ? 'font-medium text-slate-900' : ''} whitespace-nowrap border border-slate-400 px-4 py-3`}
+                          >
+                            {value || '—'}
+                          </td>
+                        ))}
+                        <td className="sticky right-0 whitespace-nowrap border border-slate-400 bg-white px-2 py-2 text-right">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -384,12 +437,20 @@ export function AuthorizationListView() {
                           >
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                page={data.page}
+                totalPages={data.totalPages}
+                total={data.total}
+                limit={data.limit}
+                onChange={setPage}
+              />
+            </>
           ) : (
             <EmptyState title="No authorizations" />
           )}

@@ -79,6 +79,25 @@ function renderCell(permit: PermitDTO, key: string, type: string, today: string)
   return Array.isArray(value) ? value.join(', ') : value;
 }
 
+function cellTitle(permit: PermitDTO, key: string, type: string, today: string): string | undefined {
+  const value = permit[key as keyof PermitDTO] as string | string[] | undefined;
+  if (key === 'status') {
+    const endDate = toDateInputValue(permit.planValidEndDate);
+    const status = value !== 'Closed' && endDate && endDate < today ? 'Overdue' : value;
+    return typeof status === 'string' ? status : undefined;
+  }
+  if (key === 'ptwValidity') {
+    const start = toDateInputValue(permit.planValidStartDate);
+    const end = toDateInputValue(permit.planValidEndDate);
+    return start && end
+      ? `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`
+      : undefined;
+  }
+  if (value === undefined || value === null || value === '') return undefined;
+  if (type === 'date') return formatDisplayDate(value as string);
+  return Array.isArray(value) ? value.join(', ') : value;
+}
+
 export function PermitTable({
   permits,
   canManage,
@@ -169,7 +188,7 @@ export function PermitTable({
             ))}
             {canManage && (
               <th
-                className={`border-2 border-slate-400 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
+                className={`sticky right-0 z-10 whitespace-nowrap border-2 border-slate-400 bg-slate-50 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
               >
                 Actions
               </th>
@@ -188,6 +207,7 @@ export function PermitTable({
                 <td
                   key={column.key}
                   data-permit-column={column.key}
+                  title={cellTitle(permit, column.key, column.type, today)}
                   className={`border-2 border-slate-400 px-4 py-3 text-slate-700 ${column.key === 'certificateType' ? 'min-w-[28rem] max-w-none whitespace-normal break-words' : 'max-w-[16rem] truncate whitespace-nowrap'} ${SECTION_STYLES[column.section].cell} ${selectedField === column.key ? 'ring-2 ring-inset ring-brand-500' : ''}`}
                 >
                   {renderCell(permit, column.key, column.type, today)}
@@ -195,7 +215,7 @@ export function PermitTable({
               ))}
               {canManage && (
                 <td
-                  className={`whitespace-nowrap border-2 border-slate-400 px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
+                  className={`sticky right-0 whitespace-nowrap border-2 border-slate-400 bg-white px-4 py-3 text-right ${SECTION_STYLES.closure.cell}`}
                 >
                   <Button
                     variant="ghost"
