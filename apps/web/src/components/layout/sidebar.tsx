@@ -29,22 +29,32 @@ const PERMIT_NAV = [
 export function Sidebar({ user }: { user: SessionUser }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [permitsOpen, setPermitsOpen] = useState(
-    pathname === '/dashboard' ||
+  const [openDropdown, setOpenDropdown] = useState<
+    'permits' | 'authorizedPeople' | 'dailyPermitTracking' | 'fields' | null
+  >(() => {
+    if (pathname.startsWith('/daily-register')) return 'dailyPermitTracking';
+    if (
+      pathname.startsWith('/authorization-dashboard') ||
+      pathname.startsWith('/authorization-list') ||
+      pathname.startsWith('/authorization-history')
+    ) {
+      return 'authorizedPeople';
+    }
+    if (pathname.startsWith('/dropdown-values')) return 'fields';
+    if (
+      pathname === '/dashboard' ||
       pathname.startsWith('/dashboard/') ||
       pathname.startsWith('/permits') ||
-      pathname.startsWith('/daily-register') ||
-      pathname.startsWith('/files'),
-  );
-  const [fieldsOpen, setFieldsOpen] = useState(pathname.startsWith('/dropdown-values'));
-  const [authorizedPeopleOpen, setAuthorizedPeopleOpen] = useState(
-    pathname.startsWith('/authorization-dashboard') ||
-      pathname.startsWith('/authorization-list') ||
-      pathname.startsWith('/authorization-history'),
-  );
-  const [dailyPermitTrackingOpen, setDailyPermitTrackingOpen] = useState(
-    pathname.startsWith('/daily-register'),
-  );
+      pathname.startsWith('/files')
+    ) {
+      return 'permits';
+    }
+    return null;
+  });
+
+  function toggleDropdown(dropdown: NonNullable<typeof openDropdown>) {
+    setOpenDropdown((current) => current === dropdown ? null : dropdown);
+  }
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
@@ -72,19 +82,19 @@ export function Sidebar({ user }: { user: SessionUser }) {
         <div>
           <button
             type="button"
-            aria-expanded={permitsOpen}
+            aria-expanded={openDropdown === 'permits'}
             aria-controls="manage-permits-links"
-            onClick={() => setPermitsOpen((open) => !open)}
+            onClick={() => toggleDropdown('permits')}
             className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
           >
             <ClipboardList className="h-4 w-4" />
             <span className="flex-1">Manage Permits</span>
             <ChevronDown
-              className={cn('h-4 w-4 transition-transform', permitsOpen && 'rotate-180')}
+              className={cn('h-4 w-4 transition-transform', openDropdown === 'permits' && 'rotate-180')}
               aria-hidden
             />
           </button>
-          {permitsOpen && (
+          {openDropdown === 'permits' && (
             <div id="manage-permits-links" className="mt-1 flex flex-col gap-1 md:pl-3">
               {PERMIT_NAV.filter((item) => !item.adminOnly || user.role === 'admin').map(
                 ({ href, label, icon: Icon }) => (
@@ -115,19 +125,19 @@ export function Sidebar({ user }: { user: SessionUser }) {
             </p>
             <button
               type="button"
-              aria-expanded={authorizedPeopleOpen}
+              aria-expanded={openDropdown === 'authorizedPeople'}
               aria-controls="authorized-people-links"
-              onClick={() => setAuthorizedPeopleOpen((open) => !open)}
+              onClick={() => toggleDropdown('authorizedPeople')}
               className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
             >
               <UserRound className="h-4 w-4" />
               <span className="flex-1">Authorized People</span>
               <ChevronDown
-                className={cn('h-4 w-4 transition-transform', authorizedPeopleOpen && 'rotate-180')}
+                className={cn('h-4 w-4 transition-transform', openDropdown === 'authorizedPeople' && 'rotate-180')}
                 aria-hidden
               />
             </button>
-            {authorizedPeopleOpen && (
+            {openDropdown === 'authorizedPeople' && (
               <div id="authorized-people-links" className="mt-1 flex flex-col gap-1 md:pl-3">
                 {[
                   {
@@ -169,9 +179,9 @@ export function Sidebar({ user }: { user: SessionUser }) {
             </p>
             <button
               type="button"
-              aria-expanded={dailyPermitTrackingOpen}
+              aria-expanded={openDropdown === 'dailyPermitTracking'}
               aria-controls="daily-permit-tracking-links"
-              onClick={() => setDailyPermitTrackingOpen((open) => !open)}
+              onClick={() => toggleDropdown('dailyPermitTracking')}
               className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
             >
               <CalendarDays className="h-4 w-4" />
@@ -179,12 +189,12 @@ export function Sidebar({ user }: { user: SessionUser }) {
               <ChevronDown
                 className={cn(
                   'h-4 w-4 transition-transform',
-                  dailyPermitTrackingOpen && 'rotate-180',
+                  openDropdown === 'dailyPermitTracking' && 'rotate-180',
                 )}
                 aria-hidden
               />
             </button>
-            {dailyPermitTrackingOpen && (
+            {openDropdown === 'dailyPermitTracking' && (
               <div id="daily-permit-tracking-links" className="mt-1 flex flex-col gap-1 md:pl-3">
                 <Link
                   href="/daily-register/dashboard"
@@ -235,19 +245,19 @@ export function Sidebar({ user }: { user: SessionUser }) {
             </p>
             <button
               type="button"
-              aria-expanded={fieldsOpen}
+              aria-expanded={openDropdown === 'fields'}
               aria-controls="manage-fields-links"
-              onClick={() => setFieldsOpen((open) => !open)}
+              onClick={() => toggleDropdown('fields')}
               className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
             >
               <SlidersHorizontal className="h-4 w-4" />
               <span className="flex-1">Manage Fields</span>
               <ChevronDown
-                className={cn('h-4 w-4 transition-transform', fieldsOpen && 'rotate-180')}
+                className={cn('h-4 w-4 transition-transform', openDropdown === 'fields' && 'rotate-180')}
                 aria-hidden
               />
             </button>
-            {fieldsOpen && (
+            {openDropdown === 'fields' && (
               <div id="manage-fields-links" className="mt-1 flex flex-col gap-1 md:pl-3">
                 <Link
                   href="/dropdown-values"
