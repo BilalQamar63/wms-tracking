@@ -4,6 +4,7 @@ import {
   DAILY_REGISTER_FIELDS as fields,
   SR_NO_HEADER,
   formatPlanValidity,
+  getDailyRegisterWorkHours,
   parseFlexibleDate,
   ymdToUtcDate,
   type DailyRegisterDTO,
@@ -40,34 +41,70 @@ function excelCellDate(value: ExcelJS.CellValue): string | null {
   return parseFlexibleDate(value);
 }
 
+function excelCellTime(value: ExcelJS.CellValue): string | null {
+  if (value instanceof Date) return value.toISOString().slice(11, 16);
+  if (typeof value === 'number' && value >= 0 && value < 1) {
+    const minutes = Math.round(value * 24 * 60) % (24 * 60);
+    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  }
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  const exact = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(text);
+  if (exact) return text;
+  const amPm = /^(\d{1,2}):([0-5]\d)\s*(AM|PM)$/i.exec(text);
+  if (!amPm || Number(amPm[1]) < 1 || Number(amPm[1]) > 12) return null;
+  const hour = (Number(amPm[1]) % 12) + (amPm[3].toUpperCase() === 'PM' ? 12 : 0);
+  return `${String(hour).padStart(2, '0')}:${amPm[2]}`;
+}
+
 function validityFormula(row: number, startColumn: string, endColumn: string): string {
   const days = `${endColumn}${row}-${startColumn}${row}+1`;
   return `IF(OR(${startColumn}${row}="",${endColumn}${row}=""),"",IF(${days}<1,"Invalid date range",IF(${days}=1,"1 day validity",${days}&" days validity")))`;
 }
 
+function workHoursFormula(
+  row: number,
+  startColumn: string,
+  endColumn: string,
+  extraColumn: string,
+): string {
+  return `IF(AND(OR(${startColumn}${row}="",${endColumn}${row}=""),${extraColumn}${row}=""),"",IF(OR(${startColumn}${row}="",${endColumn}${row}="",${startColumn}${row}=${endColumn}${row}),0,MOD(${endColumn}${row}-${startColumn}${row},1)*24)+IF(${extraColumn}${row}="",0,${extraColumn}${row}*24))`;
+}
+
+function excelTime(value: string): number | undefined {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  if (!match) return undefined;
+  return (Number(match[1]) * 60 + Number(match[2])) / (24 * 60);
+}
+
 export async function buildDailyRegisterWorkbook(
-  date: string,
+  dateFrom: string,
   entries: DailyRegisterDTO[],
+  dateTo = dateFrom,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'WMS Tracking';
   workbook.created = new Date();
   const sheet = workbook.addWorksheet(SHEET_NAME);
-  const lastColumn = DAILY_REGISTER_FIELDS.length + 1;
+  const includeRegisterDate = dateFrom !== dateTo;
+  const leadingColumns = includeRegisterDate ? 2 : 1;
+  const firstFieldColumn = leadingColumns + 1;
+  const lastColumn = DAILY_REGISTER_FIELDS.length + leadingColumns;
+  const sectionOneLastColumn = leadingColumns + 12;
 
   sheet.mergeCells(TITLE_ROW, 1, TITLE_ROW, lastColumn);
   const title = sheet.getCell(TITLE_ROW, 1);
-  title.value = `${DAILY_TITLE} - ${date}`;
+  title.value = `${DAILY_TITLE} - ${dateFrom}${includeRegisterDate ? ` to ${dateTo}` : ''}`;
   title.font = { name: FONT, size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
   title.alignment = { horizontal: 'center', vertical: 'middle' };
   title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE } };
   sheet.getRow(TITLE_ROW).height = 24;
 
-  sheet.mergeCells(SECTION_ROW, 1, SECTION_ROW, 13);
-  sheet.mergeCells(SECTION_ROW, 14, SECTION_ROW, lastColumn);
+  sheet.mergeCells(SECTION_ROW, 1, SECTION_ROW, sectionOneLastColumn);
+  sheet.mergeCells(SECTION_ROW, sectionOneLastColumn + 1, SECTION_ROW, lastColumn);
   for (const [column, text] of [
     [1, 'SECTION-1 PTW PLANNING & REQUEST'],
-    [14, 'SECTION-2 PTW APPROVAL WORKSITE REVALIDATION'],
+    [sectionOneLastColumn + 1, 'SECTION-2 PTW APPROVAL WORKSITE REVALIDATION'],
   ] as const) {
     const cell = sheet.getCell(SECTION_ROW, column);
     cell.value = text;
@@ -77,7 +114,11 @@ export async function buildDailyRegisterWorkbook(
   }
   sheet.getRow(SECTION_ROW).height = 24;
 
-  const headers = [SR_NO_HEADER, ...DAILY_REGISTER_FIELDS.map((field) => field.header)];
+  const headers = [
+    ...(includeRegisterDate ? ['Register Date'] : []),
+    SR_NO_HEADER,
+    ...DAILY_REGISTER_FIELDS.map((field) => field.header),
+  ];
   const headerRow = sheet.getRow(HEADER_ROW);
   headers.forEach((value, index) => {
     const cell = headerRow.getCell(index + 1);
@@ -88,32 +129,67 @@ export async function buildDailyRegisterWorkbook(
     cell.border = BORDER;
   });
   headerRow.height = 42;
-  sheet.getColumn(1).width = 9;
+  if (includeRegisterDate) {
+    sheet.getColumn(1).width = 16;
+    sheet.getColumn(1).numFmt = DATE_FORMAT;
+  }
+  sheet.getColumn(includeRegisterDate ? 2 : 1).width = 9;
   DAILY_REGISTER_FIELDS.forEach((field, index) => {
-    sheet.getColumn(index + 2).width = field.width;
-    if (field.type === 'date') sheet.getColumn(index + 2).numFmt = DATE_FORMAT;
+    const column = sheet.getColumn(index + firstFieldColumn);
+    column.width = field.width;
+    if (field.type === 'date') column.numFmt = DATE_FORMAT;
+    if (field.type === 'time') {
+      column.numFmt = field.key === 'extendedHours' ? '[h]:mm' : 'hh:mm';
+    }
+    if (field.key === 'workHours') column.numFmt = '0.00';
   });
 
   const startIndex = DAILY_REGISTER_FIELDS.findIndex((field) => field.key === 'plannedStartDate');
   const endIndex = DAILY_REGISTER_FIELDS.findIndex((field) => field.key === 'plannedEndDate');
+  const workStartIndex = DAILY_REGISTER_FIELDS.findIndex((field) => field.key === 'workStartTime');
+  const workEndIndex = DAILY_REGISTER_FIELDS.findIndex((field) => field.key === 'workEndTime');
+  const extendedHoursIndex = DAILY_REGISTER_FIELDS.findIndex((field) => field.key === 'extendedHours');
   entries.forEach((entry, index) => {
     const rowNumber = FIRST_DATA_ROW + index;
     const row = sheet.getRow(rowNumber);
-    row.getCell(1).value = entry.srNo;
+    if (includeRegisterDate) {
+      row.getCell(1).value = ymdToUtcDate(entry.date);
+      row.getCell(2).value = entry.srNo;
+    } else {
+      row.getCell(1).value = entry.srNo;
+    }
     DAILY_REGISTER_FIELDS.forEach((field, fieldIndex) => {
-      const cell = row.getCell(fieldIndex + 2);
+      const cell = row.getCell(fieldIndex + firstFieldColumn);
       if (field.type === 'computed') {
-        const startColumn = sheet.getColumn(startIndex + 2).letter;
-        const endColumn = sheet.getColumn(endIndex + 2).letter;
-        const start = entry.plannedStartDate ?? '';
-        const end = entry.plannedEndDate ?? '';
-        cell.value = {
-          formula: validityFormula(rowNumber, startColumn, endColumn),
-          result: formatPlanValidity(start, end),
-        };
+        if (field.key === 'ptwValidity') {
+          const startColumn = sheet.getColumn(startIndex + firstFieldColumn).letter;
+          const endColumn = sheet.getColumn(endIndex + firstFieldColumn).letter;
+          const start = entry.plannedStartDate ?? '';
+          const end = entry.plannedEndDate ?? '';
+          cell.value = {
+            formula: validityFormula(rowNumber, startColumn, endColumn),
+            result: formatPlanValidity(start, end),
+          };
+        } else {
+          const startColumn = sheet.getColumn(workStartIndex + firstFieldColumn).letter;
+          const endColumn = sheet.getColumn(workEndIndex + firstFieldColumn).letter;
+          const extraColumn = sheet.getColumn(extendedHoursIndex + firstFieldColumn).letter;
+          cell.value = {
+            formula: workHoursFormula(rowNumber, startColumn, endColumn, extraColumn),
+            result: getDailyRegisterWorkHours(
+              entry.workStartTime,
+              entry.workEndTime,
+              entry.extendedHours,
+            ) ?? '',
+          };
+          cell.numFmt = '0.00';
+        }
       } else if (field.type === 'date') {
         const value = entry[field.key as keyof DailyRegisterDTO];
         if (typeof value === 'string' && value) cell.value = ymdToUtcDate(value);
+      } else if (field.type === 'time') {
+        const value = entry[field.key as keyof DailyRegisterDTO];
+        if (typeof value === 'string' && value) cell.value = excelTime(value);
       } else {
         const value = entry[field.key as keyof DailyRegisterDTO];
         if (typeof value === 'string') cell.value = value;
@@ -146,7 +222,14 @@ export interface DailyRegisterParseResult {
 }
 
 function getDailyHeaderColumns(sheet: ExcelJS.Worksheet): Map<number, string> {
-  const required = ['srno', ...fields.map((field) => normalizeHeader(field.header))];
+  const required = [
+    'srno',
+    ...fields
+      .filter((field) =>
+        !['workStartTime', 'workEndTime', 'extendedHours', 'workHours'].includes(field.key),
+      )
+      .map((field) => normalizeHeader(field.header)),
+  ];
   for (let rowNumber = 1; rowNumber <= Math.min(sheet.rowCount, 25); rowNumber += 1) {
     const row = sheet.getRow(rowNumber);
     const headers: string[] = [];
@@ -219,6 +302,10 @@ export async function parseDailyRegisterWorkbook(buffer: Buffer): Promise<DailyR
         const parsedDate = excelCellDate(rawValues[field.key] ?? raw);
         if (!parsedDate) messages.push(`${field.header}: "${raw}" is not a valid date`);
         else data[field.key] = parsedDate;
+      } else if (field.type === 'time' && raw) {
+        const parsedTime = excelCellTime(rawValues[field.key] ?? raw);
+        if (!parsedTime) messages.push(`${field.header}: "${raw}" is not a valid time`);
+        else data[field.key] = parsedTime;
       } else if (raw) {
         data[field.key] = raw;
       }

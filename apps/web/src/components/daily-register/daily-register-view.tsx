@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
 import { CalendarDays, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import {
@@ -9,11 +9,14 @@ import {
   addDaysToYmd,
   dailyRegisterInputSchema,
   formatDisplayDate,
+  formatExtendedHours,
+  getDailyRegisterWorkHours,
   getPlanDurationDays,
   formatPlanValidity,
   getTodayYmd,
   type DailyRegisterDTO,
   type DailyRegisterInput,
+  type DailyRegisterPermitOptionDTO,
 } from '@wms/shared';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -22,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { useToast } from '@/components/ui/toast';
+import { useApprovalContactOptions } from '@/hooks/use-approval-contact-options';
 import { apiFetch, downloadFromApi, swrFetcher, toQueryString } from '@/lib/api-client';
 
 const EMPTY_INPUT: DailyRegisterInput = {};
@@ -31,14 +35,26 @@ function entryInput(entry: DailyRegisterDTO | null, date: string): DailyRegister
   for (const field of DAILY_REGISTER_FIELDS) {
     if (field.type === 'computed') continue;
     const value = entry?.[field.key as keyof DailyRegisterDTO];
-    result[field.key] =
+    const storedValue =
       typeof value === 'string'
-        ? value
+        ? field.key === 'extendedHours'
+          ? formatExtendedHours(value)
+          : value
         : field.key === 'plannedStartDate'
           ? date
           : field.key === 'plannedEndDate'
             ? addDaysToYmd(date, MAX_PTW_VALIDITY_DAYS - 1)
             : '';
+    result[field.key] =
+      field.key === 'shiftDayNight' || field.key === 'shiftValidity'
+        ? storedValue.toLowerCase().startsWith('day')
+          ? 'Day'
+          : storedValue.toLowerCase().startsWith('night')
+            ? 'Night'
+            : ''
+        : field.key === 'ptwStatus' && storedValue.toLowerCase().startsWith('liv')
+          ? 'Live'
+          : storedValue;
   }
   return result as DailyRegisterInput;
 }
@@ -53,10 +69,17 @@ export function DailyRegisterView({
   appTimeZone: string;
 }) {
   const toast = useToast();
+  const {
+    data: authorizedPeople,
+    error: authorizedPeopleError,
+    isLoading: authorizedPeopleLoading,
+  } = useApprovalContactOptions();
   const [date, setDate] = useState(() => getTodayYmd(new Date(), appTimeZone));
   const [editing, setEditing] = useState<DailyRegisterDTO | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formData, setFormData] = useState<DailyRegisterInput>(EMPTY_INPUT);
+  const [selectedSubContractor, setSelectedSubContractor] = useState(assignedSubContractor ?? '');
+  const [selectedPermitNumber, setSelectedPermitNumber] = useState('');
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -68,15 +91,100 @@ export function DailyRegisterView({
   } | null>(null);
   const [deleting, setDeleting] = useState<DailyRegisterDTO | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportDateFrom, setExportDateFrom] = useState(date);
+  const [exportDateTo, setExportDateTo] = useState(date);
+  const [exportShifts, setExportShifts] = useState<Array<'day' | 'night'>>(['day', 'night']);
+  const [selectedContractors, setSelectedContractors] = useState<string[]>([]);
+  const [loadedContractorQuery, setLoadedContractorQuery] = useState('');
+  const [exporting, setExporting] = useState(false);
   const query = useMemo(() => toQueryString({ date }), [date]);
   const { data, error, isLoading, mutate } = useSWR<DailyRegisterDTO[]>(
     date ? `/api/daily-register${query}` : null,
     swrFetcher,
   );
+  const permitContractorsQuery = formOpen
+    ? `/api/daily-register/permit-contractors${toQueryString({ date })}`
+    : null;
+  const {
+    data: permitContractors,
+    error: permitContractorsError,
+    isLoading: permitContractorsLoading,
+  } = useSWR<string[]>(permitContractorsQuery, swrFetcher);
+  const permitOptionsQuery = formOpen && selectedSubContractor
+    ? `/api/daily-register/permit-options${toQueryString({
+        date,
+        subContractor: selectedSubContractor,
+      })}`
+    : null;
+  const {
+    data: permitOptions,
+    error: permitOptionsError,
+    isLoading: permitOptionsLoading,
+  } = useSWR<DailyRegisterPermitOptionDTO[]>(permitOptionsQuery, swrFetcher);
+  const contractorQuery = useMemo(
+    () => exportDateFrom && exportDateTo && exportDateFrom <= exportDateTo
+      ? toQueryString({ dateFrom: exportDateFrom, dateTo: exportDateTo })
+      : '',
+    [exportDateFrom, exportDateTo],
+  );
+  const contractorOptionsQuery = exportOpen && contractorQuery
+    ? `/api/daily-register/export-options${contractorQuery}`
+    : null;
+  const {
+    data: contractorOptions,
+    error: contractorOptionsError,
+    isLoading: contractorOptionsLoading,
+  } = useSWR<string[]>(contractorOptionsQuery, swrFetcher);
+
+  useEffect(() => {
+    if (
+      contractorOptionsQuery &&
+      contractorOptions &&
+      loadedContractorQuery !== contractorOptionsQuery
+    ) {
+      setSelectedContractors(contractorOptions);
+      setLoadedContractorQuery(contractorOptionsQuery);
+    }
+  }, [contractorOptions, contractorOptionsQuery, loadedContractorQuery]);
+
+  const dailySummary = useMemo(() => {
+    const summary = {
+      permitCount: data?.length ?? 0,
+      workedHours: 0,
+      timedPermits: 0,
+      dayPermits: 0,
+      dayHours: 0,
+      nightPermits: 0,
+      nightHours: 0,
+    };
+    for (const entry of data ?? []) {
+      const hours = getDailyRegisterWorkHours(
+        entry.workStartTime,
+        entry.workEndTime,
+        entry.extendedHours,
+      );
+      if (hours !== undefined) {
+        summary.workedHours += hours;
+        summary.timedPermits += 1;
+      }
+      const shift = entry.shiftDayNight?.trim().toLowerCase();
+      if (shift?.startsWith('day')) {
+        summary.dayPermits += 1;
+        if (hours !== undefined) summary.dayHours += hours;
+      } else if (shift?.startsWith('night')) {
+        summary.nightPermits += 1;
+        if (hours !== undefined) summary.nightHours += hours;
+      }
+    }
+    return summary;
+  }, [data]);
 
   function openCreate() {
     setEditing(null);
     setFormData(entryInput(null, date));
+    setSelectedSubContractor(assignedSubContractor ?? '');
+    setSelectedPermitNumber('');
     setFormErrors([]);
     setFormOpen(true);
   }
@@ -84,6 +192,8 @@ export function DailyRegisterView({
   function openEdit(entry: DailyRegisterDTO) {
     setEditing(entry);
     setFormData(entryInput(entry, date));
+    setSelectedSubContractor(entry.subContractor ?? assignedSubContractor ?? '');
+    setSelectedPermitNumber(entry.ptwNumber ?? '');
     setFormErrors([]);
     setFormOpen(true);
   }
@@ -92,12 +202,55 @@ export function DailyRegisterView({
     setFormData((current) => ({ ...current, [key]: value }));
   }
 
+  function changeSubContractor(value: string) {
+    setSelectedSubContractor(value);
+    setSelectedPermitNumber('');
+    setFormData((current) => ({
+      ...current,
+      subContractor: value,
+      plantDivision: '',
+      mainContractor: '',
+      department: '',
+      discipline: '',
+      ptwTitle: '',
+      workLocation: '',
+      equipmentTagNo: '',
+      ptwType: '',
+      ptwNumber: '',
+      certificateTypes: '',
+      plannedStartDate: date,
+      plannedEndDate: addDaysToYmd(date, MAX_PTW_VALIDITY_DAYS - 1),
+    }));
+  }
+
+  function changePermit(value: string) {
+    setSelectedPermitNumber(value);
+    const option = permitOptions?.find((item) => item.permitNumber === value);
+    if (!option) {
+      setField('ptwNumber', value);
+      return;
+    }
+    setFormData((current) => ({
+      ...current,
+      ...option.data,
+      subContractor: selectedSubContractor,
+      ptwNumber: option.permitNumber,
+    }));
+  }
+
   const planDuration = formData.plannedStartDate && formData.plannedEndDate
     ? getPlanDurationDays(formData.plannedStartDate, formData.plannedEndDate)
     : null;
 
   async function saveEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (
+      !selectedSubContractor ||
+      (!selectedPermitNumber && !(editing && !editing.ptwNumber))
+    ) {
+      setFormErrors(['Select a sub contractor and permit number before saving']);
+      return;
+    }
     const parsed = dailyRegisterInputSchema.safeParse(formData);
     if (!parsed.success) {
       setFormErrors(parsed.error.issues.map((issue) => issue.message));
@@ -110,7 +263,20 @@ export function DailyRegisterView({
         {
           method: editing ? 'PUT' : 'POST',
           body: JSON.stringify(
-            editing ? parsed.data : { date, data: parsed.data },
+            editing
+              ? {
+                  ...parsed.data,
+                  subContractor: selectedSubContractor,
+                  ...(selectedPermitNumber ? { ptwNumber: selectedPermitNumber } : {}),
+                }
+              : {
+                  date,
+                  data: {
+                    ...parsed.data,
+                    subContractor: selectedSubContractor,
+                    ptwNumber: selectedPermitNumber,
+                  },
+                },
           ),
         },
       );
@@ -147,16 +313,48 @@ export function DailyRegisterView({
     }
   }
 
+  function openExport() {
+    setExportDateFrom(date);
+    setExportDateTo(date);
+    setExportShifts(['day', 'night']);
+    setSelectedContractors([]);
+    setLoadedContractorQuery('');
+    setExportOpen(true);
+  }
+
+  function toggleExportShift(shift: 'day' | 'night') {
+    setExportShifts((current) =>
+      current.includes(shift) ? current.filter((value) => value !== shift) : [...current, shift],
+    );
+  }
+
   async function exportRegister() {
+    if (
+      !contractorOptions ||
+      !exportShifts.length ||
+      (!selectedContractors.length && contractorOptions.length > 0)
+    ) return;
+    setExporting(true);
     try {
+      const params = new URLSearchParams({
+        dateFrom: exportDateFrom,
+        dateTo: exportDateTo,
+      });
+      exportShifts.forEach((shift) => params.append('shift', shift));
+      const allContractorsSelected = selectedContractors.length === contractorOptions.length;
+      if (!allContractorsSelected) {
+        selectedContractors.forEach((contractor) => params.append('subContractor', contractor));
+      }
       const name = await downloadFromApi(
-        `/api/daily-register/export${toQueryString({ date })}`,
-        `Daily-PTW-Register-${date}.xlsx`,
+        `/api/daily-register/export?${params.toString()}`,
+        `Daily-PTW-Register-${exportDateFrom}-${exportDateTo}.xlsx`,
       );
       toast.success(`Exported ${name}`);
       await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/files'));
     } catch (exportError) {
       toast.error(exportError instanceof Error ? exportError.message : 'Export failed');
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -180,14 +378,14 @@ export function DailyRegisterView({
     <>
       <PageHeader
         title="Daily PTW Register"
-        description="Each selected date has its own independent register. Import, export, or add entries using the columns from your PTW Register template."
+        description="Track daily permit counts and work hours by shift. Each date has its own register; import, export, or add permit entries."
         actions={
           <>
             <Button variant="secondary" onClick={() => setImportOpen(true)}>
               <Upload className="h-4 w-4" /> Import
             </Button>
-            <Button variant="secondary" onClick={exportRegister}>
-              <Download className="h-4 w-4" /> Export this date
+            <Button variant="secondary" onClick={openExport}>
+              <Download className="h-4 w-4" /> Export
             </Button>
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" /> Add permit entry
@@ -195,6 +393,151 @@ export function DailyRegisterView({
           </>
         }
       />
+
+      <Modal
+        open={exportOpen}
+        title="Export daily PTW register"
+        description="Choose a single day or date range, shifts, and subcontractors for the Excel workbook."
+        onClose={() => !exporting && setExportOpen(false)}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setExportOpen(false)} disabled={exporting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={exportRegister}
+              loading={exporting}
+              disabled={
+                !contractorOptions ||
+                !exportShifts.length ||
+                (!selectedContractors.length && (contractorOptions?.length ?? 0) > 0) ||
+                exportDateFrom > exportDateTo
+              }
+            >
+              <Download className="h-4 w-4" /> Download Excel
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">From date</span>
+              <Input
+                type="date"
+                value={exportDateFrom}
+                onChange={(event) => setExportDateFrom(event.target.value)}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">To date</span>
+              <Input
+                type="date"
+                value={exportDateTo}
+                min={exportDateFrom}
+                onChange={(event) => setExportDateTo(event.target.value)}
+              />
+            </label>
+          </div>
+          {exportDateFrom > exportDateTo && (
+            <p className="text-sm text-red-600">End date cannot be before start date.</p>
+          )}
+
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium text-slate-700">Shifts</legend>
+            <div className="flex flex-wrap gap-4">
+              {(['day', 'night'] as const).map((shift) => (
+                <label key={shift} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={exportShifts.includes(shift)}
+                    onChange={() => toggleExportShift(shift)}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  {shift === 'day' ? 'Day shift' : 'Night shift'}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <legend className="text-sm font-medium text-slate-700">Subcontractors</legend>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSelectedContractors(contractorOptions ?? [])}
+                  disabled={!contractorOptions?.length}
+                >
+                  Select all
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSelectedContractors([])}
+                  disabled={!contractorOptions?.length}
+                >
+                  Deselect all
+                </Button>
+              </div>
+            </div>
+            {contractorOptionsLoading ? (
+              <p className="text-sm text-slate-500">Loading subcontractors…</p>
+            ) : contractorOptionsError ? (
+              <p className="text-sm text-red-600">Could not load subcontractors: {contractorOptionsError.message}</p>
+            ) : contractorOptions?.length ? (
+              <div className="grid max-h-52 gap-2 overflow-y-auto rounded-lg border border-slate-200 p-3 sm:grid-cols-2">
+                {contractorOptions.map((contractor) => (
+                  <label key={contractor} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedContractors.includes(contractor)}
+                      onChange={() => setSelectedContractors((current) =>
+                        current.includes(contractor)
+                          ? current.filter((value) => value !== contractor)
+                          : [...current, contractor],
+                      )}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="truncate">{contractor}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-slate-200 p-3 text-sm text-slate-500">
+                No subcontractor entries in this date range. Export will include all matching entries.
+              </p>
+            )}
+          </fieldset>
+        </div>
+      </Modal>
+
+      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Permits recorded</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.permitCount}</p>
+          <p className="mt-1 text-xs text-slate-500">{date ? formatDisplayDate(date) : ''}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Total work hours</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.workedHours.toFixed(2)}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            From {dailySummary.timedPermits} permits with work or extended hours recorded
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Day shift</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.dayPermits} permits</p>
+          <p className="mt-1 text-xs text-slate-500">{dailySummary.dayHours.toFixed(2)} work hours</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Night shift</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.nightPermits} permits</p>
+          <p className="mt-1 text-xs text-slate-500">{dailySummary.nightHours.toFixed(2)} work hours</p>
+        </div>
+      </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-end sm:justify-between">
@@ -235,7 +578,13 @@ export function DailyRegisterView({
                         const value = entry[field.key as keyof DailyRegisterDTO];
                         const display =
                           field.type === 'computed'
-                            ? formatPlanValidity(entry.plannedStartDate, entry.plannedEndDate)
+                            ? field.key === 'ptwValidity'
+                              ? formatPlanValidity(entry.plannedStartDate, entry.plannedEndDate)
+                              : getDailyRegisterWorkHours(
+                                  entry.workStartTime,
+                                  entry.workEndTime,
+                                  entry.extendedHours,
+                                )?.toFixed(2) ?? ''
                             : field.type === 'date' && typeof value === 'string'
                               ? formatDisplayDate(value)
                               : typeof value === 'string'
@@ -292,26 +641,197 @@ export function DailyRegisterView({
               {formErrors.map((message, index) => <li key={`${message}-${index}`}>{message}</li>)}
             </ul>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {DAILY_REGISTER_FIELDS.filter((field) => field.type !== 'computed').map((field) => (
-              <label key={field.key} className="block space-y-1">
-                <span className="text-sm font-medium text-slate-700">
-                  {field.header.replace(/\s+/g, ' ')}{('required' in field && field.required) ? ' *' : ''}
+          <div className="mb-5 grid gap-4 rounded-lg border border-brand-100 bg-brand-50/50 p-4 sm:grid-cols-2">
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">Sub Contractor *</span>
+              <select
+                value={selectedSubContractor}
+                onChange={(event) => changeSubContractor(event.target.value)}
+                disabled={!!assignedSubContractor}
+                required
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100"
+              >
+                <option value="">Select sub contractor</option>
+                {selectedSubContractor && !permitContractors?.includes(selectedSubContractor) && (
+                  <option key={selectedSubContractor} value={selectedSubContractor}>
+                    {selectedSubContractor}
+                  </option>
+                )}
+                {permitContractors?.map((contractor) => (
+                  <option key={contractor} value={contractor}>{contractor}</option>
+                ))}
+              </select>
+              {permitContractorsLoading && (
+                <span className="block text-xs text-slate-500">Loading contractors with permits…</span>
+              )}
+              {permitContractorsError && (
+                <span className="block text-xs text-red-600">
+                  Could not load contractors: {permitContractorsError.message}
                 </span>
-                <Input
-                  type={field.type === 'date' ? 'date' : 'text'}
-                  required={'required' in field ? field.required : undefined}
-                  maxLength={'maxLength' in field ? field.maxLength : undefined}
-                  max={
-                    field.key === 'plannedEndDate' && formData.plannedStartDate
+              )}
+              {!permitContractorsLoading && !permitContractorsError && !permitContractors?.length && (
+                <span className="block text-xs text-slate-500">
+                  No contractors have active permits for {formatDisplayDate(date)}.
+                </span>
+              )}
+            </label>
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">Permit Number *</span>
+              <select
+                value={selectedPermitNumber}
+                onChange={(event) => changePermit(event.target.value)}
+                disabled={!selectedSubContractor || permitOptionsLoading}
+                required
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-100"
+              >
+                <option value="">
+                  {!selectedSubContractor
+                    ? 'Select sub contractor first'
+                    : permitOptionsLoading
+                      ? 'Loading permits…'
+                      : 'Select permit number'}
+                </option>
+                {selectedPermitNumber && !permitOptions?.some((item) => item.permitNumber === selectedPermitNumber) && (
+                  <option value={selectedPermitNumber}>{selectedPermitNumber}</option>
+                )}
+                {permitOptions?.map((option) => (
+                  <option key={option.permitNumber} value={option.permitNumber}>{option.permitNumber}</option>
+                ))}
+              </select>
+              {permitOptionsError && (
+                <span className="block text-xs text-red-600">
+                  Could not load permits: {permitOptionsError.message}
+                </span>
+              )}
+              {!permitOptionsLoading && !permitOptionsError && selectedSubContractor && !permitOptions?.length && (
+                <span className="block text-xs text-slate-500">
+                  No active permits for this contractor on {formatDisplayDate(date)}.
+                </span>
+              )}
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {DAILY_REGISTER_FIELDS.filter(
+              (field) =>
+                field.type !== 'computed' &&
+                field.key !== 'subContractor' &&
+                field.key !== 'ptwNumber' &&
+                !['permitIssuerTime', 'jobPerformer1Time', 'jobPerformer2Time'].includes(field.key),
+            ).map((field) => {
+              const personTimeField = {
+                permitIssuer: 'permitIssuerTime',
+                jobPerformer1: 'jobPerformer1Time',
+                jobPerformer2: 'jobPerformer2Time',
+              } as const;
+              if (field.key in personTimeField) {
+                const timeKey = personTimeField[field.key as keyof typeof personTimeField];
+                const currentPerson = formData[field.key] ?? '';
+                const currentTime = formData[timeKey] ?? '';
+                return (
+                  <div key={field.key} className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                    <label className="block space-y-1">
+                      <span className="text-sm font-medium text-slate-700">
+                        {field.header}
+                      </span>
+                      <select
+                        value={currentPerson}
+                        onChange={(event) => setField(field.key, event.target.value)}
+                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      >
+                        <option value="">
+                          {authorizedPeopleLoading ? 'Loading authorized people…' : 'Select authorized person'}
+                        </option>
+                        {currentPerson && !authorizedPeople?.some((person) => person.displayValue === currentPerson) && (
+                          <option value={currentPerson}>{currentPerson}</option>
+                        )}
+                        {authorizedPeople?.map((person) => (
+                          <option key={person.id} value={person.displayValue}>
+                            {person.displayValue}
+                          </option>
+                        ))}
+                      </select>
+                      {authorizedPeopleError && (
+                        <span className="block text-xs text-red-600">
+                          Could not load Authorized People: {authorizedPeopleError.message}
+                        </span>
+                      )}
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-sm font-medium text-slate-700">
+                        {field.header} time
+                      </span>
+                      <Input
+                        type="time"
+                        value={currentTime}
+                        onChange={(event) => setField(timeKey, event.target.value)}
+                      />
+                      <span className="block text-xs text-slate-500">
+                        Date: {formatDisplayDate(date)}
+                      </span>
+                    </label>
+                  </div>
+                );
+              }
+              const isPermitDetail = [
+                'plantDivision',
+                'mainContractor',
+                'department',
+                'discipline',
+                'ptwTitle',
+                'workLocation',
+                'equipmentTagNo',
+                'ptwType',
+                'certificateTypes',
+                'plannedStartDate',
+                'plannedEndDate',
+              ].includes(field.key);
+              return (
+                <label key={field.key} className="block space-y-1">
+                  <span className="text-sm font-medium text-slate-700">
+                    {field.header.replace(/\s+/g, ' ')}{('required' in field && field.required) ? ' *' : ''}
+                  </span>
+                  {field.type === 'radio' ? (
+                    <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-2">
+                      {field.options?.map((option) => (
+                        <label key={option} className="flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="radio"
+                            name={`daily-register-${field.key}`}
+                            value={option}
+                            checked={formData[field.key] === option}
+                            onChange={(event) => setField(field.key, event.target.value)}
+                            className="h-4 w-4 border-slate-300 text-brand-600 focus:ring-brand-500"
+                          />
+                          {option}
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <Input
+                      type={
+                        field.type === 'date'
+                          ? 'date'
+                          : field.type === 'time'
+                            ? 'time'
+                            : 'text'
+                      }
+                      required={'required' in field ? field.required : undefined}
+                      maxLength={'maxLength' in field ? field.maxLength : undefined}
+                      max={field.key === 'extendedHours' ? '04:00' : field.key === 'plannedEndDate' && formData.plannedStartDate
                       ? addDaysToYmd(formData.plannedStartDate, MAX_PTW_VALIDITY_DAYS - 1)
-                      : undefined
-                  }
-                  value={formData[field.key] ?? ''}
-                  onChange={(event) => setField(field.key, event.target.value)}
-                />
-              </label>
-            ))}
+                          : undefined}
+                      step={field.key === 'extendedHours' ? '60' : undefined}
+                      value={formData[field.key] ?? ''}
+                      onChange={(event) => setField(field.key, event.target.value)}
+                      disabled={
+                        isPermitDetail &&
+                        !!permitOptions?.some((option) => option.permitNumber === selectedPermitNumber)
+                      }
+                    />
+                  )}
+                </label>
+              );
+            })}
           </div>
           {planDuration !== null && (
             <p className={`mt-4 text-sm ${planDuration > MAX_PTW_VALIDITY_DAYS ? 'text-red-700' : 'text-slate-600'}`}>

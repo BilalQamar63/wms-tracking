@@ -1,4 +1,6 @@
-export type DailyRegisterFieldType = 'text' | 'date' | 'computed';
+import { DAILY_PTW_STATUSES, DAILY_SHIFTS } from './options';
+
+export type DailyRegisterFieldType = 'text' | 'date' | 'time' | 'number' | 'radio' | 'computed';
 
 export interface DailyRegisterFieldDef {
   readonly key: string;
@@ -7,10 +9,11 @@ export interface DailyRegisterFieldDef {
   readonly width: number;
   readonly maxLength?: number;
   readonly required?: boolean;
+  readonly options?: readonly string[];
 }
 
 export const DAILY_REGISTER_FIELDS = [
-  { key: 'shiftDayNight', header: 'Shift Day/Night', type: 'text', width: 18 },
+  { key: 'shiftDayNight', header: 'Shift Day/Night', type: 'radio', width: 18, options: DAILY_SHIFTS },
   { key: 'plantDivision', header: 'Plant/Division', type: 'text', width: 25 },
   { key: 'mainContractor', header: 'Main Contractor', type: 'text', width: 22 },
   { key: 'subContractor', header: 'Sub Contractor', type: 'text', width: 22 },
@@ -37,19 +40,23 @@ export const DAILY_REGISTER_FIELDS = [
     required: true,
   },
   { key: 'ptwValidity', header: 'PTW Validity', type: 'computed', width: 20 },
-  { key: 'shiftValidity', header: 'Shift Validity', type: 'text', width: 20, maxLength: 100 },
+  { key: 'shiftValidity', header: 'Shift Validity', type: 'radio', width: 20, options: DAILY_SHIFTS },
+  { key: 'workStartTime', header: 'Work Start Time', type: 'time', width: 18 },
+  { key: 'workEndTime', header: 'Work End Time', type: 'time', width: 18 },
+  { key: 'extendedHours', header: 'Extended Hours', type: 'time', width: 18 },
+  { key: 'workHours', header: 'Work Hours', type: 'computed', width: 16 },
   { key: 'permitIssuer', header: 'Permit issuer', type: 'text', width: 32, maxLength: 255 },
-  { key: 'permitIssuerTime', header: 'Time', type: 'text', width: 14, maxLength: 30 },
+  { key: 'permitIssuerTime', header: 'Time', type: 'time', width: 14 },
   { key: 'jobPerformer1', header: 'Job Performer-1', type: 'text', width: 32, maxLength: 255 },
-  { key: 'jobPerformer1Time', header: 'Time', type: 'text', width: 14, maxLength: 30 },
+  { key: 'jobPerformer1Time', header: 'Time', type: 'time', width: 14 },
   { key: 'jobPerformer2', header: 'Job Performer-2', type: 'text', width: 32, maxLength: 255 },
-  { key: 'jobPerformer2Time', header: 'Time', type: 'text', width: 14, maxLength: 30 },
+  { key: 'jobPerformer2Time', header: 'Time', type: 'time', width: 14 },
   {
     key: 'ptwStatus',
-    header: 'PTW Status \nLiv/Suspended',
-    type: 'text',
+    header: 'PTW Status (Live/Suspended)',
+    type: 'radio',
     width: 24,
-    maxLength: 100,
+    options: DAILY_PTW_STATUSES,
   },
   { key: 'remarks', header: 'Remarks', type: 'text', width: 36, maxLength: 1000 },
 ] as const satisfies readonly DailyRegisterFieldDef[];

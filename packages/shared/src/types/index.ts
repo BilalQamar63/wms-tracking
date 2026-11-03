@@ -118,6 +118,11 @@ export interface DailyRegisterDTO extends DailyRegisterInput {
   updatedAt: string;
 }
 
+export interface DailyRegisterPermitOptionDTO {
+  permitNumber: string;
+  data: DailyRegisterInput;
+}
+
 export interface Paginated<T> {
   items: T[];
   page: number;

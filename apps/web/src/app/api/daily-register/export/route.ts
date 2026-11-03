@@ -11,10 +11,26 @@ export const dynamic = 'force-dynamic';
 
 export const GET = route(async (req) => {
   const user = await requireUser();
-  const { date } = z
-    .object({ date: dailyRegisterDateSchema })
-    .parse(searchParamsToObject(req));
-  const { buffer, fileName } = await exportDailyRegister(date, user);
+  const { dateFrom, dateTo, shifts, subContractors } = z
+    .object({
+      dateFrom: dailyRegisterDateSchema,
+      dateTo: dailyRegisterDateSchema,
+      shifts: z.array(z.enum(['day', 'night'])).min(1),
+      subContractors: z.array(z.string().trim().min(1).max(255)).optional(),
+    })
+    .refine((value) => value.dateFrom <= value.dateTo, {
+      path: ['dateTo'],
+      message: 'End date cannot be before start date',
+    })
+    .parse({
+      ...searchParamsToObject(req),
+      shifts: req.nextUrl.searchParams.getAll('shift'),
+      subContractors: req.nextUrl.searchParams.getAll('subContractor'),
+    });
+  const { buffer, fileName } = await exportDailyRegister(
+    { dateFrom, dateTo, shifts, ...(subContractors?.length ? { subContractors } : {}) },
+    user,
+  );
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': XLSX_MIME,

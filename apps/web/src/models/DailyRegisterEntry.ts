@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Schema, model, models, type Model, type Types } from 'mongoose';
 import { DAILY_REGISTER_FIELDS } from '@wms/shared';
 import type { DailyRegisterInput } from '@wms/shared';
@@ -33,6 +34,16 @@ const dailyRegisterEntrySchema = new Schema<DailyRegisterEntryDoc>(
 dailyRegisterEntrySchema.index({ date: 1, srNo: 1 }, { unique: true });
 dailyRegisterEntrySchema.index({ date: 1, subContractor: 1 });
 dailyRegisterEntrySchema.index({ date: 1, ptwNumber: 1 });
+
+const cachedModel = models.DailyRegisterEntry as Model<DailyRegisterEntryDoc> | undefined;
+if (
+  cachedModel &&
+  DAILY_REGISTER_FIELDS.some(
+    (field) => field.type !== 'computed' && !cachedModel.schema.path(field.key),
+  )
+) {
+  mongoose.deleteModel('DailyRegisterEntry');
+}
 
 export const DailyRegisterEntryModel: Model<DailyRegisterEntryDoc> =
   (models.DailyRegisterEntry as Model<DailyRegisterEntryDoc> | undefined) ??

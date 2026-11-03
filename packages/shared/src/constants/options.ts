@@ -5,6 +5,8 @@
 export const DEPARTMENTS = ['Construction', 'Commissioning'] as const;
 
 export const MAIN_CONTRACTORS = ['JV-TR/NMDC'] as const;
+export const DAILY_SHIFTS = ['Day', 'Night'] as const;
+export const DAILY_PTW_STATUSES = ['Live', 'Suspended'] as const;
 
 export const APPROVAL_CONTACT_ROLES = [
   'performingAuthority',

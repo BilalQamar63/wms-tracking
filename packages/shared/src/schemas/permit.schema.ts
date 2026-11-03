@@ -185,15 +185,59 @@ export const dailyRegisterInputSchema = z
     plannedEndDate: z.string().refine(isValidYmd, 'Choose a valid planned end date'),
     shiftValidity: z.string().trim().max(100).optional(),
     permitIssuer: z.string().trim().max(255).optional(),
-    permitIssuerTime: z.string().trim().max(30).optional(),
+    permitIssuerTime: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid permit issuer time').optional(),
+    ),
     jobPerformer1: z.string().trim().max(255).optional(),
-    jobPerformer1Time: z.string().trim().max(30).optional(),
+    jobPerformer1Time: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid job performer time').optional(),
+    ),
     jobPerformer2: z.string().trim().max(255).optional(),
-    jobPerformer2Time: z.string().trim().max(30).optional(),
+    jobPerformer2Time: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid job performer time').optional(),
+    ),
+    workStartTime: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid work start time').optional(),
+    ),
+    workEndTime: z.preprocess(
+      emptyToUndefined,
+      z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid work end time').optional(),
+    ),
+    extendedHours: z.preprocess(
+      (value) => {
+        const cleaned = emptyToUndefined(value);
+        if (typeof cleaned !== 'string' || !/^\d+(?:\.\d+)?$/.test(cleaned)) return cleaned;
+        if (Number(cleaned) > 4) return cleaned;
+        const totalMinutes = Math.round(Number(cleaned) * 60);
+        if (!Number.isFinite(totalMinutes) || totalMinutes > 240) return cleaned;
+        return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+      },
+      z.string()
+        .regex(/^(?:0[0-3]|04):[0-5]\d$/, 'Use hours and minutes, up to 4 hours')
+        .refine((value) => value <= '04:00', 'Extended hours cannot exceed 4 hours')
+        .optional(),
+    ),
     ptwStatus: z.string().trim().max(100).optional(),
     remarks: z.string().trim().max(1000).optional(),
   })
   .superRefine((value, ctx) => {
+    if (!!value.workStartTime !== !!value.workEndTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [value.workStartTime ? 'workEndTime' : 'workStartTime'],
+        message: 'Enter both work start and end times to calculate work hours',
+      });
+    } else if (value.workStartTime === value.workEndTime && value.workStartTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['workEndTime'],
+        message: 'Work end time must be different from work start time',
+      });
+    }
     if (value.plannedEndDate < value.plannedStartDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

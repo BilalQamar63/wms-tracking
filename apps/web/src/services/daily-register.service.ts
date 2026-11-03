@@ -4,14 +4,21 @@ import type {
   SessionUser,
   ImportRowError,
   ImportStats,
+  DailyRegisterPermitOptionDTO,
 } from '@wms/shared';
-import { dailyRegisterInputSchema, dailyRegisterDateSchema } from '@wms/shared';
+import {
+  dailyRegisterInputSchema,
+  dailyRegisterDateSchema,
+  PERMIT_FIELD_LIST,
+  ymdToUtcDate,
+} from '@wms/shared';
 import { assignedSubContractorFor } from '@/lib/auth/permissions';
 import { connectDb } from '@/lib/db/mongoose';
 import { AppError, badRequest, conflict, forbidden, notFound } from '@/lib/http/errors';
-import { toDailyRegisterDTO } from '@/lib/mappers';
+import { toDailyRegisterDTO, toPermitDTO } from '@/lib/mappers';
 import { reserveSequence } from '@/models/Counter';
 import { DailyRegisterEntryModel } from '@/models/DailyRegisterEntry';
+import { PermitModel, type PermitDoc } from '@/models/Permit';
 import { FileRecordModel } from '@/models/FileRecord';
 import { assertObjectId, escapeRegex } from '@/lib/utils/object-id';
 import {
@@ -104,6 +111,146 @@ export async function listDailyRegister(date: string, user: SessionUser): Promis
   return docs.map((doc) => toDailyRegisterDTO(doc));
 }
 
+export async function listDailyRegisterPermitSubContractors(
+  date: string,
+  user: SessionUser,
+): Promise<string[]> {
+  assertCanUseDailyRegister(user);
+  const selectedDate = dailyRegisterDateSchema.parse(date);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const dayStart = ymdToUtcDate(selectedDate);
+  const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+  const values = await PermitModel.distinct('subContractor', {
+    importBatchId: { $exists: false },
+    status: { $ne: 'Closed' },
+    newPtwNumber: { $exists: true, $ne: '' },
+    planValidStartDate: { $lt: dayEnd },
+    planValidEndDate: { $gte: dayStart },
+    ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+  });
+  return values
+    .filter((value): value is string => typeof value === 'string' && !!value.trim())
+    .map((value) => value.trim())
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export async function listDailyRegisterPermitOptions(
+  date: string,
+  subContractor: string,
+  user: SessionUser,
+): Promise<DailyRegisterPermitOptionDTO[]> {
+  assertCanUseDailyRegister(user);
+  const selectedDate = dailyRegisterDateSchema.parse(date);
+  const selectedSubContractor = subContractor.trim();
+  if (!selectedSubContractor) throw badRequest('Choose a sub contractor');
+  const assignedSubContractor = assignedSubContractorFor(user);
+  if (
+    assignedSubContractor &&
+    selectedSubContractor.toLowerCase() !== assignedSubContractor.toLowerCase()
+  ) {
+    throw forbidden('You can only select permits for your assigned sub contractor');
+  }
+
+  await connectDb();
+  const dayStart = ymdToUtcDate(selectedDate);
+  const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+  const permitFields = PERMIT_FIELD_LIST.map((field) => field.key);
+  const docs = await PermitModel.find({
+    importBatchId: { $exists: false },
+    subContractor: new RegExp(`^${escapeRegex(selectedSubContractor)}$`, 'i'),
+    status: { $ne: 'Closed' },
+    planValidStartDate: { $lt: dayEnd },
+    planValidEndDate: { $gte: dayStart },
+  })
+    .select(['srNo', 'createdAt', 'updatedAt', ...permitFields].join(' '))
+    .sort({ newPtwNumber: 1, srNo: 1 })
+    .lean<PermitDoc[]>();
+
+  return docs.flatMap((doc) => {
+    const permit = toPermitDTO(doc);
+    if (!permit.newPtwNumber) return [];
+    const data: DailyRegisterInput = {
+      plantDivision: permit.plantDivision,
+      mainContractor: permit.company,
+      subContractor: permit.subContractor,
+      department: permit.department,
+      discipline: permit.discipline,
+      ptwTitle: permit.workTitle,
+      workLocation: permit.workLocation,
+      equipmentTagNo: permit.equipmentTagNo,
+      ptwType: permit.newPtwType,
+      ptwNumber: permit.newPtwNumber,
+      certificateTypes: Array.isArray(permit.certificateType)
+        ? permit.certificateType.join(', ')
+        : undefined,
+      plannedStartDate: permit.planValidStartDate?.slice(0, 10),
+      plannedEndDate: permit.planValidEndDate?.slice(0, 10),
+    };
+    return [{ permitNumber: permit.newPtwNumber, data }];
+  });
+}
+
+export interface DailyRegisterExportFilters {
+  dateFrom: string;
+  dateTo: string;
+  shifts: Array<'day' | 'night'>;
+  subContractors?: string[];
+}
+
+function assertDateRange(dateFrom: string, dateTo: string): void {
+  dailyRegisterDateSchema.parse(dateFrom);
+  dailyRegisterDateSchema.parse(dateTo);
+  if (dateFrom > dateTo) throw badRequest('Start date cannot be after end date');
+}
+
+export async function listDailyRegisterSubContractors(
+  dateFrom: string,
+  dateTo: string,
+  user: SessionUser,
+): Promise<string[]> {
+  assertCanUseDailyRegister(user);
+  assertDateRange(dateFrom, dateTo);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const values = await DailyRegisterEntryModel.distinct('subContractor', {
+    date: { $gte: dateFrom, $lte: dateTo },
+    subContractor: assignedSubContractor ?? { $exists: true, $ne: '' },
+  });
+  return values.filter((value): value is string => typeof value === 'string' && !!value.trim())
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export async function listDailyRegisterForExport(
+  filters: DailyRegisterExportFilters,
+  user: SessionUser,
+): Promise<DailyRegisterDTO[]> {
+  assertCanUseDailyRegister(user);
+  assertDateRange(filters.dateFrom, filters.dateTo);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  if (
+    assignedSubContractor &&
+    filters.subContractors?.some((value) => value.toLowerCase() !== assignedSubContractor.toLowerCase())
+  ) {
+    throw forbidden('You can only export your assigned sub contractor');
+  }
+  const shiftMatches = filters.shifts.map((shift) => ({
+    shiftDayNight: shift === 'day' ? /^\s*day\b/i : /^\s*night\b/i,
+  }));
+  const docs = await DailyRegisterEntryModel.find({
+    date: { $gte: filters.dateFrom, $lte: filters.dateTo },
+    ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+    ...(!assignedSubContractor && filters.subContractors
+      ? { subContractor: { $in: filters.subContractors } }
+      : {}),
+    $or: shiftMatches,
+  })
+    .sort({ date: 1, srNo: 1 })
+    .lean();
+  return docs.map((doc) => toDailyRegisterDTO(doc));
+}
+
 export async function addDailyRegisterEntry(
   date: string,
   input: DailyRegisterInput,
@@ -149,9 +296,17 @@ export async function updateDailyRegisterEntry(
   const cleanInput = Object.fromEntries(
     Object.entries(scopedInput).filter(([, value]) => value !== undefined && value !== ''),
   );
+  const unsetClearedFields = Object.fromEntries(
+    Object.entries(scopedInput)
+      .filter(([, value]) => value === '')
+      .map(([key]) => [key, 1]),
+  );
   const updated = await DailyRegisterEntryModel.findByIdAndUpdate(
     id,
-    { $set: { ...cleanInput, updatedBy: user.id } },
+    {
+      $set: { ...cleanInput, updatedBy: user.id },
+      ...(Object.keys(unsetClearedFields).length ? { $unset: unsetClearedFields } : {}),
+    },
     { new: true },
   ).lean();
   if (!updated) throw notFound('Daily register entry');
@@ -166,19 +321,22 @@ export async function deleteDailyRegisterEntry(id: string, user: SessionUser): P
 }
 
 export async function exportDailyRegister(
-  date: string,
+  filters: DailyRegisterExportFilters,
   user: SessionUser,
 ): Promise<{ buffer: Buffer; fileName: string }> {
   assertCanUseDailyRegister(user);
-  const entries = await listDailyRegister(date, user);
-  const buffer = await buildDailyRegisterWorkbook(date, entries);
-  const fileName = `Daily-PTW-Register_${date}_${timestampForFileName()}.xlsx`;
+  const entries = await listDailyRegisterForExport(filters, user);
+  const buffer = await buildDailyRegisterWorkbook(filters.dateFrom, entries, filters.dateTo);
+  const dateLabel = filters.dateFrom === filters.dateTo
+    ? filters.dateFrom
+    : `${filters.dateFrom}_to_${filters.dateTo}`;
+  const fileName = `Daily-PTW-Register_${dateLabel}_${timestampForFileName()}.xlsx`;
   await FileRecordModel.create({
     kind: 'export',
     originalName: fileName,
     bytes: buffer.length,
     rowCount: entries.length,
-    dailyDate: date,
+    ...(filters.dateFrom === filters.dateTo ? { dailyDate: filters.dateFrom } : {}),
     subContractors: [...new Set(entries.map((entry) => entry.subContractor).filter(Boolean))],
     createdBy: user.id,
   });
