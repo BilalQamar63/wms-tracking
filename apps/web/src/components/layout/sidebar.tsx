@@ -42,6 +42,9 @@ export function Sidebar({ user }: { user: SessionUser }) {
       pathname.startsWith('/authorization-list') ||
       pathname.startsWith('/authorization-history'),
   );
+  const [dailyPermitTrackingOpen, setDailyPermitTrackingOpen] = useState(
+    pathname.startsWith('/daily-register'),
+  );
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(`${href}/`);
@@ -103,9 +106,13 @@ export function Sidebar({ user }: { user: SessionUser }) {
             </div>
           )}
         </div>
+        <div className="my-2 border-t border-slate-200" />
 
         {user.role === 'admin' && (
           <div>
+            <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Authorized People
+            </p>
             <button
               type="button"
               aria-expanded={authorizedPeopleOpen}
@@ -116,10 +123,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
               <UserRound className="h-4 w-4" />
               <span className="flex-1">Authorized People</span>
               <ChevronDown
-                className={cn(
-                  'h-4 w-4 transition-transform',
-                  authorizedPeopleOpen && 'rotate-180',
-                )}
+                className={cn('h-4 w-4 transition-transform', authorizedPeopleOpen && 'rotate-180')}
                 aria-hidden
               />
             </button>
@@ -157,8 +161,78 @@ export function Sidebar({ user }: { user: SessionUser }) {
           </div>
         )}
 
+        <div className="my-2 border-t border-slate-200" />
+        {(user.role === 'admin' || user.assignedSubContractor) && (
+          <div>
+            <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Daily Permit Tracking
+            </p>
+            <button
+              type="button"
+              aria-expanded={dailyPermitTrackingOpen}
+              aria-controls="daily-permit-tracking-links"
+              onClick={() => setDailyPermitTrackingOpen((open) => !open)}
+              className="flex w-full shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 md:gap-3"
+            >
+              <CalendarDays className="h-4 w-4" />
+              <span className="flex-1">Daily Permit Tracking</span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  dailyPermitTrackingOpen && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
+            {dailyPermitTrackingOpen && (
+              <div id="daily-permit-tracking-links" className="mt-1 flex flex-col gap-1 md:pl-3">
+                <Link
+                  href="/daily-register/dashboard"
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                    isActive('/daily-register/dashboard')
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Dashboard
+                </Link>
+                <Link
+                  href="/daily-register"
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                    pathname === '/daily-register'
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  <CalendarDays className="h-4 w-4" />
+                  Daily Register
+                </Link>
+                <Link
+                  href="/daily-register/history"
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
+                    isActive('/daily-register/history')
+                      ? 'bg-brand-50 text-brand-700'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  )}
+                >
+                  <History className="h-4 w-4" />
+                  Permit Entry History
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="my-2 border-t border-slate-200" />
+
         {user.role === 'admin' && (
           <div>
+            <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Customize Fields
+            </p>
             <button
               type="button"
               aria-expanded={fieldsOpen}
@@ -191,6 +265,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
             )}
           </div>
         )}
+        <div className="my-2 border-t border-slate-200" />
 
         {user.role === 'admin' && (
           <Link
@@ -205,26 +280,6 @@ export function Sidebar({ user }: { user: SessionUser }) {
             <Users className="h-4 w-4" />
             Users
           </Link>
-        )}
-        <div className="my-2 border-t border-slate-200" />
-        {(user.role === 'admin' || user.assignedSubContractor) && (
-          <>
-            <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Daily Permit Tracking
-            </p>
-            <Link
-              href="/daily-register"
-              className={cn(
-                'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:gap-3',
-                isActive('/daily-register')
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-slate-600 hover:bg-slate-100',
-              )}
-            >
-              <CalendarDays className="h-4 w-4" />
-              Daily Register
-            </Link>
-          </>
         )}
       </nav>
 

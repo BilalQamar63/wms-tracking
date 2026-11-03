@@ -283,6 +283,33 @@ export async function deleteApprovalContacts(ids: string[]): Promise<number> {
     throw notFound('One or more selected authorizations');
   }
 
+  await assertApprovalContactsCanBeDeleted(contacts);
+
+  const result = await ApprovalContactModel.deleteMany({ _id: { $in: uniqueIds } });
+  if (result.deletedCount !== uniqueIds.length) {
+    throw conflict('The authorization list changed during deletion; refresh and try again');
+  }
+  return result.deletedCount;
+}
+
+export async function deleteAllApprovalContacts(): Promise<number> {
+  await connectDb();
+  const contacts = await ApprovalContactModel.find({}).lean<ApprovalContactDoc[]>();
+  if (contacts.length === 0) return 0;
+
+  await assertApprovalContactsCanBeDeleted(contacts);
+
+  const ids = contacts.map((contact) => contact._id);
+  const result = await ApprovalContactModel.deleteMany({ _id: { $in: ids } });
+  if (result.deletedCount !== ids.length) {
+    throw conflict('The authorization list changed during deletion; refresh and try again');
+  }
+  return result.deletedCount;
+}
+
+async function assertApprovalContactsCanBeDeleted(
+  contacts: ApprovalContactDoc[],
+): Promise<void> {
   const displayValues = contacts.flatMap((contact) => [
     `${contact.name} - ${contact.phone}`,
     `${normalizeAuthorizationText(contact.name ?? '')} - ${normalizeAuthorizationText(contact.phone ?? '')}`,
@@ -295,12 +322,6 @@ export async function deleteApprovalContacts(ids: string[]): Promise<number> {
       'Cannot delete selected authorizations that are used by permits. Remove them from those permits first.',
     );
   }
-
-  const result = await ApprovalContactModel.deleteMany({ _id: { $in: uniqueIds } });
-  if (result.deletedCount !== uniqueIds.length) {
-    throw conflict('The authorization list changed during deletion; refresh and try again');
-  }
-  return result.deletedCount;
 }
 
 export function createApprovalContactSelectionValidator() {

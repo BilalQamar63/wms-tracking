@@ -99,6 +99,9 @@ export function AuthorizationListView() {
   const [editing, setEditing] = useState<ApprovalContactDTO | null>(null);
   const [deleting, setDeleting] = useState<ApprovalContactDTO | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deleteAllEmail, setDeleteAllEmail] = useState('');
+  const [deleteAllPassword, setDeleteAllPassword] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [contactForm, setContactForm] = useState<ApprovalContactInput>(EMPTY_CONTACT);
@@ -258,6 +261,30 @@ export function AuthorizationListView() {
     }
   }
 
+  async function deleteAllContacts() {
+    setBusy(true);
+    try {
+      const result = await apiFetch<{ deleted: number }>('/api/approval-contacts/bulk', {
+        method: 'DELETE',
+        body: JSON.stringify({
+          deleteAll: true,
+          credentials: { email: deleteAllEmail, password: deleteAllPassword },
+        }),
+      });
+      toast.success(`${result.deleted} authorizations deleted`);
+      setDeleteAllOpen(false);
+      setDeleteAllEmail('');
+      setDeleteAllPassword('');
+      await refreshContacts();
+    } catch (deleteError) {
+      toast.error(
+        deleteError instanceof Error ? deleteError.message : 'Could not delete all authorizations',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const contacts = data?.items ?? [];
   const allSelected =
     contacts.length > 0 && contacts.every((contact) => selectedIds.has(contact.id));
@@ -283,6 +310,13 @@ export function AuthorizationListView() {
                 <Trash2 className="h-4 w-4" /> Delete selected ({selectedIds.size})
               </Button>
             )}
+            <Button
+              variant="danger"
+              onClick={() => setDeleteAllOpen(true)}
+              disabled={!data?.total}
+            >
+              <Trash2 className="h-4 w-4" /> Delete all
+            </Button>
             <input
               ref={importFileRef}
               type="file"
@@ -660,6 +694,75 @@ export function AuthorizationListView() {
         Delete {selectedIds.size} selected authorizations? Any authorization used by a permit
         prevents the entire selection from being deleted.
       </ConfirmDialog>
+
+      <Modal
+        open={deleteAllOpen}
+        title="Delete all authorizations"
+        description={`This will delete all ${data?.total ?? 0} authorization records, not only the current page. Admin credentials are required.`}
+        onClose={() => {
+          if (!busy) {
+            setDeleteAllOpen(false);
+            setDeleteAllEmail('');
+            setDeleteAllPassword('');
+          }
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setDeleteAllOpen(false);
+                setDeleteAllEmail('');
+                setDeleteAllPassword('');
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="delete-all-authorizations-form"
+              variant="danger"
+              loading={busy}
+            >
+              <Trash2 className="h-4 w-4" /> Delete all
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="delete-all-authorizations-form"
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void deleteAllContacts();
+          }}
+        >
+          <p className="text-sm text-slate-600">
+            Authorizations currently used by permits cannot be deleted. Update those permits first.
+          </p>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Admin email</span>
+            <Input
+              type="email"
+              autoComplete="username"
+              required
+              value={deleteAllEmail}
+              onChange={(event) => setDeleteAllEmail(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Admin password</span>
+            <Input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={deleteAllPassword}
+              onChange={(event) => setDeleteAllPassword(event.target.value)}
+            />
+          </label>
+        </form>
+      </Modal>
     </>
   );
 }

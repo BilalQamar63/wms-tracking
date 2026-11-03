@@ -8,9 +8,14 @@ export interface FileFilterState {
   dateTo: string;
 }
 
-export function useFiles(filters: FileFilterState, page: number, limit = 20) {
+export function useFiles(
+  filters: FileFilterState,
+  page: number,
+  limit = 20,
+  endpoint = '/api/files',
+) {
   const query = toQueryString({ ...filters, page, limit });
-  return useSWR<Paginated<FileRecordDTO>>(`/api/files${query}`, swrFetcher, {
+  return useSWR<Paginated<FileRecordDTO>>(`${endpoint}${query}`, swrFetcher, {
     keepPreviousData: true,
   });
 }

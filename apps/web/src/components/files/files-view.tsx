@@ -31,11 +31,21 @@ const sizeLabel = (bytes: number) =>
     ? `${(bytes / 1024).toFixed(1)} KB`
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-export function FilesView({ currentUser }: { currentUser: SessionUser }) {
+export function FilesView({
+  currentUser,
+  endpoint = '/api/files',
+  title = 'Import / Export History',
+  description = 'Imports, exports, and manual permit additions, including who performed them and the associated subcontractors.',
+}: {
+  currentUser: SessionUser;
+  endpoint?: string;
+  title?: string;
+  description?: string;
+}) {
   const toast = useToast();
   const [filters, setFilters] = useState<FileFilterState>({ kind: '', dateFrom: '', dateTo: '' });
   const [page, setPage] = useState(1);
-  const { data, error, isLoading, mutate: refresh } = useFiles(filters, page);
+  const { data, error, isLoading, mutate: refresh } = useFiles(filters, page, 20, endpoint);
   const [deleting, setDeleting] = useState<FileRecordDTO | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,8 +71,8 @@ export function FilesView({ currentUser }: { currentUser: SessionUser }) {
   return (
     <>
       <PageHeader
-        title="Import / Export History"
-        description="Imports, exports, and manual permit additions, including who performed them and the associated subcontractors."
+        title={title}
+        description={description}
       />
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

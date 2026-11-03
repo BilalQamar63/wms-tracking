@@ -123,6 +123,39 @@ export interface DailyRegisterPermitOptionDTO {
   data: DailyRegisterInput;
 }
 
+export interface DailyRegisterSummaryDTO {
+  total: number;
+  day: number;
+  night: number;
+}
+
+export interface DailyRegisterDateNavigationDTO {
+  previousDate: string | null;
+  nextDate: string | null;
+}
+
+export interface DailyRegisterDateGroupDTO {
+  date: string;
+  total: number;
+  day: number;
+  night: number;
+}
+
+export interface DailyRegisterDashboardFiltersDTO {
+  ptwNumber?: string;
+  ptwType?: string;
+  subContractor?: string;
+  shiftDayNight?: string;
+  ptwStatus?: string;
+}
+
+export interface DailyRegisterDashboardFilterOptionsDTO {
+  ptwTypes: string[];
+  subContractors: string[];
+  shifts: string[];
+  ptwStatuses: string[];
+}
+
 export interface Paginated<T> {
   items: T[];
   page: number;

@@ -13,7 +13,6 @@ export interface DailyRegisterFieldDef {
 }
 
 export const DAILY_REGISTER_FIELDS = [
-  { key: 'shiftDayNight', header: 'Shift Day/Night', type: 'radio', width: 18, options: DAILY_SHIFTS },
   { key: 'plantDivision', header: 'Plant/Division', type: 'text', width: 25 },
   { key: 'mainContractor', header: 'Main Contractor', type: 'text', width: 22 },
   { key: 'subContractor', header: 'Sub Contractor', type: 'text', width: 22 },
@@ -40,6 +39,7 @@ export const DAILY_REGISTER_FIELDS = [
     required: true,
   },
   { key: 'ptwValidity', header: 'PTW Validity', type: 'computed', width: 20 },
+  { key: 'shiftDayNight', header: 'Shift Day/Night', type: 'radio', width: 18, options: DAILY_SHIFTS },
   { key: 'shiftValidity', header: 'Shift Validity', type: 'radio', width: 20, options: DAILY_SHIFTS },
   { key: 'workStartTime', header: 'Work Start Time', type: 'time', width: 18 },
   { key: 'workEndTime', header: 'Work End Time', type: 'time', width: 18 },

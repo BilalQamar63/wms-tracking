@@ -21,6 +21,7 @@ import { toFileRecordDTO } from '@/lib/mappers';
 import { timestampForFileName } from '@/lib/utils/file-name';
 import { assertObjectId } from '@/lib/utils/object-id';
 import { FileRecordModel, type FileRecordDoc } from '@/models/FileRecord';
+import { UserModel } from '@/models/User';
 import {
   applyReviewedImport,
   findPermitsForExport,
@@ -33,7 +34,11 @@ import { getPermitDropdownValues } from './dropdown-values.service';
 const POPULATE = { path: 'createdBy', select: 'name isDeleted assignedSubContractor' };
 const MAX_STORED_ERRORS = 100;
 
-export async function listFiles(query: FileQuery): Promise<Paginated<FileRecordDTO>> {
+export async function listFiles(
+  query: FileQuery,
+  user?: SessionUser,
+  dailyRegisterOnly = false,
+): Promise<Paginated<FileRecordDTO>> {
   await connectDb();
   const filter: FilterQuery<FileRecordDoc> = {};
   if (query.kind) filter.kind = query.kind;
@@ -43,6 +48,33 @@ export async function listFiles(query: FileQuery): Promise<Paginated<FileRecordD
       // inclusive end-of-day
       ...(query.dateTo ? { $lt: new Date(ymdToUtcDate(query.dateTo).getTime() + 86_400_000) } : {}),
     };
+  }
+  if (dailyRegisterOnly) {
+    filter.$and = [
+      {
+        $or: [
+          { dailyDate: { $exists: true, $ne: '' } },
+          { originalName: /^Daily-PTW-Register_/i },
+          { originalName: 'Daily register manual entry' },
+        ],
+      },
+    ];
+  }
+  if (user && user.role !== 'admin') {
+    const assignedSubContractor = assignedSubContractorFor(user);
+    const assignedUserIds = await UserModel.distinct('_id', {
+      assignedSubContractor,
+    });
+    filter.$and = [
+      ...(filter.$and ?? []),
+      {
+        $or: [
+          { subContractors: assignedSubContractor },
+          { 'importedPermits.subContractor': assignedSubContractor },
+          { createdBy: { $in: assignedUserIds } },
+        ],
+      },
+    ];
   }
 
   const [docs, total] = await Promise.all([

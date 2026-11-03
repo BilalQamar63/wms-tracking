@@ -1,8 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR, { mutate as globalMutate } from 'swr';
-import { CalendarDays, Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import {
   DAILY_REGISTER_FIELDS,
   MAX_PTW_VALIDITY_DAYS,
@@ -15,6 +25,7 @@ import {
   formatPlanValidity,
   getTodayYmd,
   type DailyRegisterDTO,
+  type DailyRegisterDateNavigationDTO,
   type DailyRegisterInput,
   type DailyRegisterPermitOptionDTO,
 } from '@wms/shared';
@@ -29,6 +40,54 @@ import { useApprovalContactOptions } from '@/hooks/use-approval-contact-options'
 import { apiFetch, downloadFromApi, swrFetcher, toQueryString } from '@/lib/api-client';
 
 const EMPTY_INPUT: DailyRegisterInput = {};
+const DAILY_REGISTER_TABLE_HIDDEN_FIELDS = new Set([
+  'plantDivision',
+  'mainContractor',
+  'department',
+  'discipline',
+  'ptwTitle',
+  'equipmentTagNo',
+  'ptwType',
+  'certificateTypes',
+]);
+const DAILY_REGISTER_TABLE_ORDER = [
+  'subContractor',
+  'workLocation',
+  'ptwNumber',
+  'plannedStartDate',
+  'plannedEndDate',
+  'ptwValidity',
+  'shiftValidity',
+  'shiftDayNight',
+  'workStartTime',
+  'workEndTime',
+  'extendedHours',
+  'workHours',
+  'permitIssuer',
+  'permitIssuerTime',
+  'jobPerformer1',
+  'jobPerformer1Time',
+  'jobPerformer2',
+  'jobPerformer2Time',
+  'ptwStatus',
+  'remarks',
+] as const;
+const DAILY_REGISTER_TABLE_FIELDS = DAILY_REGISTER_FIELDS
+  .filter((field) => !DAILY_REGISTER_TABLE_HIDDEN_FIELDS.has(field.key))
+  .sort(
+    (left, right) =>
+      DAILY_REGISTER_TABLE_ORDER.indexOf(
+        left.key as (typeof DAILY_REGISTER_TABLE_ORDER)[number],
+      ) -
+      DAILY_REGISTER_TABLE_ORDER.indexOf(
+        right.key as (typeof DAILY_REGISTER_TABLE_ORDER)[number],
+      ),
+  );
+
+function getLocalCurrentTime(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
 
 function entryInput(entry: DailyRegisterDTO | null, date: string): DailyRegisterInput {
   const result: Record<string, string> = {};
@@ -63,18 +122,25 @@ export function DailyRegisterView({
   isAdmin,
   assignedSubContractor,
   appTimeZone,
+  initialDate,
+  initialEditId,
 }: {
   isAdmin: boolean;
   assignedSubContractor?: string;
   appTimeZone: string;
+  initialDate?: string;
+  initialEditId?: string;
 }) {
   const toast = useToast();
+  const router = useRouter();
   const {
     data: authorizedPeople,
     error: authorizedPeopleError,
     isLoading: authorizedPeopleLoading,
   } = useApprovalContactOptions();
-  const [date, setDate] = useState(() => getTodayYmd(new Date(), appTimeZone));
+  const [date, setDate] = useState(() => initialDate ?? getTodayYmd(new Date(), appTimeZone));
+  const [handledEditId, setHandledEditId] = useState('');
+  const [liveTime, setLiveTime] = useState(getLocalCurrentTime);
   const [editing, setEditing] = useState<DailyRegisterDTO | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formData, setFormData] = useState<DailyRegisterInput>(EMPTY_INPUT);
@@ -103,6 +169,45 @@ export function DailyRegisterView({
     date ? `/api/daily-register${query}` : null,
     swrFetcher,
   );
+  const dateNavigationQuery = date
+    ? `/api/daily-register/dates${toQueryString({ date })}`
+    : null;
+  const {
+    data: dateNavigation,
+    error: dateNavigationError,
+    isLoading: dateNavigationLoading,
+  } = useSWR<DailyRegisterDateNavigationDTO>(dateNavigationQuery, swrFetcher);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const updateTime = () => setLiveTime(getLocalCurrentTime());
+    updateTime();
+    const timer = window.setInterval(updateTime, 1000);
+    return () => window.clearInterval(timer);
+  }, [formOpen]);
+
+  function changeDate(nextDate: string) {
+    setDate(nextDate);
+    router.replace(
+      nextDate ? `/daily-register?date=${encodeURIComponent(nextDate)}` : '/daily-register',
+      { scroll: false },
+    );
+  }
+
+  const openEdit = useCallback((entry: DailyRegisterDTO) => {
+    setEditing(entry);
+    setFormData(entryInput(entry, date));
+    setSelectedSubContractor(entry.subContractor ?? assignedSubContractor ?? '');
+    setSelectedPermitNumber(entry.ptwNumber ?? '');
+    setFormErrors([]);
+    setFormOpen(true);
+  }, [assignedSubContractor, date]);
+  useEffect(() => {
+    if (!initialEditId || handledEditId === initialEditId || !data) return;
+    const entry = data.find((item) => item.id === initialEditId);
+    if (entry) openEdit(entry);
+    setHandledEditId(initialEditId);
+  }, [data, handledEditId, initialEditId, openEdit]);
   const permitContractorsQuery = formOpen
     ? `/api/daily-register/permit-contractors${toQueryString({ date })}`
     : null;
@@ -148,37 +253,11 @@ export function DailyRegisterView({
     }
   }, [contractorOptions, contractorOptionsQuery, loadedContractorQuery]);
 
-  const dailySummary = useMemo(() => {
-    const summary = {
-      permitCount: data?.length ?? 0,
-      workedHours: 0,
-      timedPermits: 0,
-      dayPermits: 0,
-      dayHours: 0,
-      nightPermits: 0,
-      nightHours: 0,
-    };
-    for (const entry of data ?? []) {
-      const hours = getDailyRegisterWorkHours(
-        entry.workStartTime,
-        entry.workEndTime,
-        entry.extendedHours,
-      );
-      if (hours !== undefined) {
-        summary.workedHours += hours;
-        summary.timedPermits += 1;
-      }
-      const shift = entry.shiftDayNight?.trim().toLowerCase();
-      if (shift?.startsWith('day')) {
-        summary.dayPermits += 1;
-        if (hours !== undefined) summary.dayHours += hours;
-      } else if (shift?.startsWith('night')) {
-        summary.nightPermits += 1;
-        if (hours !== undefined) summary.nightHours += hours;
-      }
-    }
-    return summary;
-  }, [data]);
+  const dailySummary = useMemo(() => ({
+    permitCount: data?.length ?? 0,
+    dayPermits: data?.filter((entry) => entry.shiftDayNight?.trim().toLowerCase().startsWith('day')).length ?? 0,
+    nightPermits: data?.filter((entry) => entry.shiftDayNight?.trim().toLowerCase().startsWith('night')).length ?? 0,
+  }), [data]);
 
   function openCreate() {
     setEditing(null);
@@ -189,17 +268,21 @@ export function DailyRegisterView({
     setFormOpen(true);
   }
 
-  function openEdit(entry: DailyRegisterDTO) {
-    setEditing(entry);
-    setFormData(entryInput(entry, date));
-    setSelectedSubContractor(entry.subContractor ?? assignedSubContractor ?? '');
-    setSelectedPermitNumber(entry.ptwNumber ?? '');
-    setFormErrors([]);
-    setFormOpen(true);
-  }
-
   function setField(key: string, value: string) {
     setFormData((current) => ({ ...current, [key]: value }));
+  }
+
+  function setPersonAndTime(
+    personKey: keyof DailyRegisterInput,
+    timeKey: keyof DailyRegisterInput,
+    value: string,
+  ) {
+    const timeAtSelection = getLocalCurrentTime();
+    setFormData((current) => ({
+      ...current,
+      [personKey]: value,
+      ...(value && !current[timeKey] ? { [timeKey]: timeAtSelection } : {}),
+    }));
   }
 
   function changeSubContractor(value: string) {
@@ -283,6 +366,12 @@ export function DailyRegisterView({
       toast.success(editing ? 'Daily register entry updated' : 'Daily register entry added');
       setFormOpen(false);
       await mutate();
+      await Promise.all([
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/history')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dashboard')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dates')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/summary')),
+      ]);
       await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/files'));
     } catch (saveError) {
       toast.error(saveError instanceof Error ? saveError.message : 'Could not save entry');
@@ -304,6 +393,12 @@ export function DailyRegisterView({
       );
       setImportResult(result);
       await mutate();
+      await Promise.all([
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/history')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dashboard')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dates')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/summary')),
+      ]);
       await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/files'));
       toast.success(`Import complete: ${result.stats.inserted} added, ${result.stats.failed} skipped`);
     } catch (uploadError) {
@@ -366,6 +461,12 @@ export function DailyRegisterView({
       setDeleting(null);
       toast.success('Daily register entry deleted');
       await mutate();
+      await Promise.all([
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/history')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dashboard')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dates')),
+        globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/summary')),
+      ]);
       await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/files'));
     } catch (deleteError) {
       toast.error(deleteError instanceof Error ? deleteError.message : 'Could not delete entry');
@@ -378,7 +479,7 @@ export function DailyRegisterView({
     <>
       <PageHeader
         title="Daily PTW Register"
-        description="Track daily permit counts and work hours by shift. Each date has its own register; import, export, or add permit entries."
+        description="Track daily permit counts and work details by shift. Each date has its own register; import, export, or add permit entries."
         actions={
           <>
             <Button variant="secondary" onClick={() => setImportOpen(true)}>
@@ -514,28 +615,23 @@ export function DailyRegisterView({
         </div>
       </Modal>
 
-      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mb-5">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Selected date — {date ? formatDisplayDate(date) : ''}
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-500">Permits recorded</p>
+          <p className="text-sm text-slate-500">Total permits</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.permitCount}</p>
-          <p className="mt-1 text-xs text-slate-500">{date ? formatDisplayDate(date) : ''}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-500">Total work hours</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.workedHours.toFixed(2)}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            From {dailySummary.timedPermits} permits with work or extended hours recorded
-          </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Day shift</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.dayPermits} permits</p>
-          <p className="mt-1 text-xs text-slate-500">{dailySummary.dayHours.toFixed(2)} work hours</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.dayPermits}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Night shift</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.nightPermits} permits</p>
-          <p className="mt-1 text-xs text-slate-500">{dailySummary.nightHours.toFixed(2)} work hours</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.nightPermits}</p>
+        </div>
         </div>
       </section>
 
@@ -543,13 +639,40 @@ export function DailyRegisterView({
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-end sm:justify-between">
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-700">Register date</span>
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            <Input type="date" value={date} onChange={(event) => changeDate(event.target.value)} />
           </label>
-          <p className="flex items-center gap-2 text-sm text-slate-600">
-            <CalendarDays className="h-4 w-4" />
-            {date ? formatDisplayDate(date) : 'Choose a date'}
-            {assignedSubContractor ? ` · ${assignedSubContractor}` : isAdmin ? ' · All contractors' : ''}
-          </p>
+          <div className="flex flex-col gap-3 sm:items-end">
+            {dateNavigationError ? (
+              <p role="alert" className="text-sm text-red-600">
+                Could not load register date navigation: {dateNavigationError.message}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="Previous page with newer date"
+                disabled={dateNavigationLoading || !dateNavigation?.nextDate}
+                onClick={() => dateNavigation?.nextDate && changeDate(dateNavigation.nextDate)}
+              >
+                <ChevronLeft className="h-4 w-4" /> Previous page
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label="Next page with older date"
+                disabled={dateNavigationLoading || !dateNavigation?.previousDate}
+                onClick={() => dateNavigation?.previousDate && changeDate(dateNavigation.previousDate)}
+              >
+                Next page <ChevronRight className="h-4 w-4" />
+              </Button>
+              <p className="flex items-center gap-2 text-sm text-slate-600">
+                <CalendarDays className="h-4 w-4" />
+                {date ? formatDisplayDate(date) : 'Choose a date'}
+                {assignedSubContractor ? ` · ${assignedSubContractor}` : isAdmin ? ' · All contractors' : ''}
+              </p>
+            </div>
+          </div>
         </div>
         {error ? (
           <EmptyState title="Could not load daily register">{error.message}</EmptyState>
@@ -562,19 +685,21 @@ export function DailyRegisterView({
                 <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold text-slate-600">
                   <tr>
                     <th className="border border-slate-300 px-3 py-2">Sr No</th>
-                    {DAILY_REGISTER_FIELDS.map((field) => (
+                    {DAILY_REGISTER_TABLE_FIELDS.map((field) => (
                       <th key={field.key} className="border border-slate-300 px-3 py-2">
                         {field.header}
                       </th>
                     ))}
-                    <th className="border border-slate-300 px-3 py-2">Actions</th>
+                    <th className="sticky right-0 z-20 border border-slate-300 bg-slate-50 px-3 py-2">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.map((entry) => (
                     <tr key={entry.id} className="hover:bg-slate-50">
                       <td className="border border-slate-200 px-3 py-2 font-medium">{entry.srNo}</td>
-                      {DAILY_REGISTER_FIELDS.map((field) => {
+                      {DAILY_REGISTER_TABLE_FIELDS.map((field) => {
                         const value = entry[field.key as keyof DailyRegisterDTO];
                         const display =
                           field.type === 'computed'
@@ -591,12 +716,12 @@ export function DailyRegisterView({
                                 ? value
                                 : '';
                         return (
-                          <td key={field.key} className="max-w-sm border border-slate-200 px-3 py-2">
+                          <td key={field.key} className="max-w-sm border border-slate-300 px-3 py-2">
                             {display || <span className="text-slate-300">—</span>}
                           </td>
                         );
                       })}
-                      <td className="whitespace-nowrap border border-slate-200 px-2 py-1 text-right">
+                      <td className="sticky right-0 z-10 whitespace-nowrap border border-slate-300 bg-white px-2 py-1 text-right">
                         <Button variant="ghost" size="sm" onClick={() => openEdit(entry)} aria-label={`Edit entry ${entry.srNo}`}>
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -735,7 +860,9 @@ export function DailyRegisterView({
                       </span>
                       <select
                         value={currentPerson}
-                        onChange={(event) => setField(field.key, event.target.value)}
+                        onChange={(event) =>
+                          setPersonAndTime(field.key, timeKey, event.target.value)
+                        }
                         className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                       >
                         <option value="">
@@ -768,6 +895,11 @@ export function DailyRegisterView({
                       <span className="block text-xs text-slate-500">
                         Date: {formatDisplayDate(date)}
                       </span>
+                      {!currentTime && (
+                        <span className="block text-xs text-slate-500">
+                          Current time: {liveTime} (auto-filled when a person is selected)
+                        </span>
+                      )}
                     </label>
                   </div>
                 );
@@ -786,50 +918,57 @@ export function DailyRegisterView({
                 'plannedEndDate',
               ].includes(field.key);
               return (
-                <label key={field.key} className="block space-y-1">
-                  <span className="text-sm font-medium text-slate-700">
-                    {field.header.replace(/\s+/g, ' ')}{('required' in field && field.required) ? ' *' : ''}
-                  </span>
-                  {field.type === 'radio' ? (
-                    <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-2">
-                      {field.options?.map((option) => (
-                        <label key={option} className="flex items-center gap-2 text-sm text-slate-700">
-                          <input
-                            type="radio"
-                            name={`daily-register-${field.key}`}
-                            value={option}
-                            checked={formData[field.key] === option}
-                            onChange={(event) => setField(field.key, event.target.value)}
-                            className="h-4 w-4 border-slate-300 text-brand-600 focus:ring-brand-500"
-                          />
-                          {option}
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <Input
-                      type={
-                        field.type === 'date'
-                          ? 'date'
-                          : field.type === 'time'
-                            ? 'time'
-                            : 'text'
-                      }
-                      required={'required' in field ? field.required : undefined}
-                      maxLength={'maxLength' in field ? field.maxLength : undefined}
-                      max={field.key === 'extendedHours' ? '04:00' : field.key === 'plannedEndDate' && formData.plannedStartDate
-                      ? addDaysToYmd(formData.plannedStartDate, MAX_PTW_VALIDITY_DAYS - 1)
-                          : undefined}
-                      step={field.key === 'extendedHours' ? '60' : undefined}
-                      value={formData[field.key] ?? ''}
-                      onChange={(event) => setField(field.key, event.target.value)}
-                      disabled={
-                        isPermitDetail &&
-                        !!permitOptions?.some((option) => option.permitNumber === selectedPermitNumber)
-                      }
-                    />
+                <div key={field.key} className="contents">
+                  <label
+                    className={`block space-y-1 ${field.key === 'certificateTypes' ? 'sm:col-span-2' : ''}`}
+                  >
+                    <span className="text-sm font-medium text-slate-700">
+                      {field.header.replace(/\s+/g, ' ')}{('required' in field && field.required) ? ' *' : ''}
+                    </span>
+                    {field.type === 'radio' ? (
+                      <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-2">
+                        {field.options?.map((option) => (
+                          <label key={option} className="flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              type="radio"
+                              name={`daily-register-${field.key}`}
+                              value={option}
+                              checked={formData[field.key] === option}
+                              onChange={(event) => setField(field.key, event.target.value)}
+                              className="h-4 w-4 border-slate-300 text-brand-600 focus:ring-brand-500"
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <Input
+                        type={
+                          field.type === 'date'
+                            ? 'date'
+                            : field.type === 'time'
+                              ? 'time'
+                              : 'text'
+                        }
+                        required={'required' in field ? field.required : undefined}
+                        maxLength={'maxLength' in field ? field.maxLength : undefined}
+                        max={field.key === 'extendedHours' ? '04:00' : field.key === 'plannedEndDate' && formData.plannedStartDate
+                        ? addDaysToYmd(formData.plannedStartDate, MAX_PTW_VALIDITY_DAYS - 1)
+                            : undefined}
+                        step={field.key === 'extendedHours' ? '60' : undefined}
+                        value={formData[field.key] ?? ''}
+                        onChange={(event) => setField(field.key, event.target.value)}
+                        disabled={
+                          isPermitDetail &&
+                          !!permitOptions?.some((option) => option.permitNumber === selectedPermitNumber)
+                        }
+                      />
+                    )}
+                  </label>
+                  {field.key === 'plannedEndDate' && (
+                    <div className="sm:col-span-2 border-t border-slate-200" />
                   )}
-                </label>
+                </div>
               );
             })}
           </div>

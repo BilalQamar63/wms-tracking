@@ -5,6 +5,12 @@ import type {
   ImportRowError,
   ImportStats,
   DailyRegisterPermitOptionDTO,
+  DailyRegisterSummaryDTO,
+  DailyRegisterDateNavigationDTO,
+  DailyRegisterDateGroupDTO,
+  DailyRegisterDashboardFiltersDTO,
+  DailyRegisterDashboardFilterOptionsDTO,
+  Paginated,
 } from '@wms/shared';
 import {
   dailyRegisterInputSchema,
@@ -109,6 +115,199 @@ export async function listDailyRegister(date: string, user: SessionUser): Promis
     .sort({ srNo: 1 })
     .lean();
   return docs.map((doc) => toDailyRegisterDTO(doc));
+}
+
+export async function getDailyRegisterSummary(
+  user: SessionUser,
+  date?: string,
+): Promise<DailyRegisterSummaryDTO> {
+  assertCanUseDailyRegister(user);
+  if (date) dailyRegisterDateSchema.parse(date);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const [summary] = await DailyRegisterEntryModel.aggregate<DailyRegisterSummaryDTO>([
+    {
+      $match: {
+        ...(date ? { date } : {}),
+        ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: 1 },
+        day: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$shiftDayNight', ''] }, regex: /^day/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        night: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$shiftDayNight', ''] }, regex: /^night/i } },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    { $project: { _id: 0, total: 1, day: 1, night: 1 } },
+  ]);
+  return summary ?? { total: 0, day: 0, night: 0 };
+}
+
+export async function getDailyRegisterDateNavigation(
+  date: string,
+  user: SessionUser,
+): Promise<DailyRegisterDateNavigationDTO> {
+  assertCanUseDailyRegister(user);
+  const selectedDate = dailyRegisterDateSchema.parse(date);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const scope = assignedSubContractor ? { subContractor: assignedSubContractor } : {};
+  const [previous, next] = await Promise.all([
+    DailyRegisterEntryModel.findOne({ ...scope, date: { $lt: selectedDate } })
+      .sort({ date: -1 })
+      .select('date')
+      .lean(),
+    DailyRegisterEntryModel.findOne({ ...scope, date: { $gt: selectedDate } })
+      .sort({ date: 1 })
+      .select('date')
+      .lean(),
+  ]);
+  return {
+    previousDate: previous?.date ?? null,
+    nextDate: next?.date ?? null,
+  };
+}
+
+export async function listDailyRegisterHistory(
+  date: string | undefined,
+  page: number,
+  user: SessionUser,
+  filters: DailyRegisterDashboardFiltersDTO = {},
+): Promise<Paginated<DailyRegisterDTO>> {
+  assertCanUseDailyRegister(user);
+  if (date) dailyRegisterDateSchema.parse(date);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const filter = {
+    ...(date ? { date } : {}),
+    ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+    ...dailyRegisterDashboardMatch(filters, assignedSubContractor),
+  };
+  const limit = 20;
+  const [docs, total] = await Promise.all([
+    DailyRegisterEntryModel.find(filter)
+      .sort({ date: -1, srNo: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    DailyRegisterEntryModel.countDocuments(filter),
+  ]);
+  return {
+    items: docs.map((doc) => toDailyRegisterDTO(doc)),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+export async function listDailyRegisterDashboard(
+  user: SessionUser,
+  filters: DailyRegisterDashboardFiltersDTO = {},
+): Promise<DailyRegisterDateGroupDTO[]> {
+  assertCanUseDailyRegister(user);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  return DailyRegisterEntryModel.aggregate<DailyRegisterDateGroupDTO>([
+    {
+      $match: {
+        ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+        ...dailyRegisterDashboardMatch(filters, assignedSubContractor),
+      },
+    },
+    {
+      $group: {
+        _id: '$date',
+        total: { $sum: 1 },
+        day: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$shiftDayNight', ''] }, regex: /^day/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        night: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$shiftDayNight', ''] }, regex: /^night/i } },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    { $sort: { _id: -1 } },
+    { $project: { _id: 0, date: '$_id', total: 1, day: 1, night: 1 } },
+  ]);
+}
+
+function dailyRegisterDashboardMatch(
+  filters: DailyRegisterDashboardFiltersDTO,
+  assignedSubContractor?: string,
+): Record<string, unknown> {
+  const match: Record<string, unknown> = {};
+  const ptwNumber = filters.ptwNumber?.trim();
+  if (ptwNumber) match.ptwNumber = { $regex: escapeRegex(ptwNumber), $options: 'i' };
+  if (filters.ptwType) match.ptwType = filters.ptwType;
+  if (
+    filters.subContractor &&
+    (!assignedSubContractor ||
+      filters.subContractor.toLowerCase() !== assignedSubContractor.toLowerCase())
+  ) {
+    match._id = { $exists: false };
+  } else if (filters.subContractor && !assignedSubContractor) {
+    match.subContractor = filters.subContractor;
+  }
+  if (filters.shiftDayNight) match.shiftDayNight = filters.shiftDayNight;
+  if (filters.ptwStatus) match.ptwStatus = filters.ptwStatus;
+  return match;
+}
+
+export async function getDailyRegisterDashboardFilterOptions(
+  user: SessionUser,
+): Promise<DailyRegisterDashboardFilterOptionsDTO> {
+  assertCanUseDailyRegister(user);
+  await connectDb();
+  const assignedSubContractor = assignedSubContractorFor(user);
+  const scope = assignedSubContractor ? { subContractor: assignedSubContractor } : {};
+  const [ptwTypes, subContractors, shifts, ptwStatuses] = await Promise.all([
+    DailyRegisterEntryModel.distinct('ptwType', scope),
+    DailyRegisterEntryModel.distinct('subContractor', scope),
+    DailyRegisterEntryModel.distinct('shiftDayNight', scope),
+    DailyRegisterEntryModel.distinct('ptwStatus', scope),
+  ]);
+  const clean = (values: unknown[]) =>
+    values
+      .filter((value): value is string => typeof value === 'string' && !!value.trim())
+      .map((value) => value.trim())
+      .sort((left, right) => left.localeCompare(right));
+  return {
+    ptwTypes: clean(ptwTypes),
+    subContractors: clean(subContractors),
+    shifts: clean(shifts),
+    ptwStatuses: clean(ptwStatuses),
+  };
 }
 
 export async function listDailyRegisterPermitSubContractors(
