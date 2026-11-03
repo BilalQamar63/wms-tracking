@@ -34,13 +34,13 @@ export function Sidebar({ user }: { user: SessionUser }) {
       pathname.startsWith('/dashboard/') ||
       pathname.startsWith('/permits') ||
       pathname.startsWith('/daily-register') ||
-      pathname.startsWith('/files') ||
-      pathname.startsWith('/authorization-list') ||
-      pathname.startsWith('/authorization-history'),
+      pathname.startsWith('/files'),
   );
   const [fieldsOpen, setFieldsOpen] = useState(pathname.startsWith('/dropdown-values'));
   const [authorizedPeopleOpen, setAuthorizedPeopleOpen] = useState(
-    pathname.startsWith('/authorization-list') || pathname.startsWith('/authorization-history'),
+    pathname.startsWith('/authorization-dashboard') ||
+      pathname.startsWith('/authorization-list') ||
+      pathname.startsWith('/authorization-history'),
   );
 
   function isActive(href: string) {
@@ -126,6 +126,11 @@ export function Sidebar({ user }: { user: SessionUser }) {
             {authorizedPeopleOpen && (
               <div id="authorized-people-links" className="mt-1 flex flex-col gap-1 md:pl-3">
                 {[
+                  {
+                    href: '/authorization-dashboard',
+                    label: 'Dashboard',
+                    icon: LayoutDashboard,
+                  },
                   { href: '/authorization-list', label: 'Authorized List', icon: ClipboardCheck },
                   {
                     href: '/authorization-history',

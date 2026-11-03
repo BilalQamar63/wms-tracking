@@ -5,5 +5,5 @@ export const metadata = { title: 'Dashboard' };
 
 export default async function DashboardPage() {
   const user = await requirePageUser();
-  return <DashboardView canExport={user.role === 'admin'} showAuthorizationStats={user.role === 'admin'} />;
+  return <DashboardView canExport={user.role === 'admin'} />;
 }
