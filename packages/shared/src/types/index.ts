@@ -127,6 +127,8 @@ export interface DailyRegisterSummaryDTO {
   total: number;
   day: number;
   night: number;
+  live: number;
+  suspended: number;
 }
 
 export interface DailyRegisterDateNavigationDTO {
@@ -139,6 +141,8 @@ export interface DailyRegisterDateGroupDTO {
   total: number;
   day: number;
   night: number;
+  live: number;
+  suspended: number;
 }
 
 export interface DailyRegisterDashboardFiltersDTO {

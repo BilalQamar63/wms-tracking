@@ -97,7 +97,11 @@ function DailyRegisterDateSection({
   total,
   day,
   night,
+  live,
+  suspended,
   isOpen,
+  dashboardFilters,
+  filterOptions,
   onToggle,
   onView,
 }: {
@@ -105,38 +109,35 @@ function DailyRegisterDateSection({
   total: number;
   day: number;
   night: number;
+  live: number;
+  suspended: number;
   isOpen: boolean;
+  dashboardFilters: Pick<
+    DailyRegisterDashboardFiltersDTO,
+    'subContractor' | 'shiftDayNight' | 'ptwStatus'
+  >;
+  filterOptions?: DailyRegisterDashboardFilterOptionsDTO;
   onToggle: () => void;
   onView: (entry: DailyRegisterDTO) => void;
 }) {
   const [page, setPage] = useState(1);
   const [ptwNumber, setPtwNumber] = useState('');
   const [ptwType, setPtwType] = useState('');
-  const [subContractor, setSubContractor] = useState('');
-  const [shiftDayNight, setShiftDayNight] = useState('');
-  const [ptwStatus, setPtwStatus] = useState('');
   const debouncedPtwNumber = useDebounce(ptwNumber);
-  const filters: DailyRegisterDashboardFiltersDTO = {
+  const rowFilters: DailyRegisterDashboardFiltersDTO = {
     ptwNumber: debouncedPtwNumber.trim() || undefined,
     ptwType: ptwType || undefined,
-    subContractor: subContractor || undefined,
-    shiftDayNight: shiftDayNight || undefined,
-    ptwStatus: ptwStatus || undefined,
+    ...dashboardFilters,
   };
   const filterQuery = toQueryString({
-    ptwNumber: filters.ptwNumber,
-    ptwType: filters.ptwType,
-    subContractor: filters.subContractor,
-    shiftDayNight: filters.shiftDayNight,
-    ptwStatus: filters.ptwStatus,
+    ptwNumber: rowFilters.ptwNumber,
+    ptwType: rowFilters.ptwType,
+    subContractor: rowFilters.subContractor,
+    shiftDayNight: rowFilters.shiftDayNight,
+    ptwStatus: rowFilters.ptwStatus,
   });
   useEffect(() => setPage(1), [filterQuery]);
-  const query = toQueryString({ date, page, ...filters });
-  const { data: filterOptions, error: filterOptionsError } =
-    useSWR<DailyRegisterDashboardFilterOptionsDTO>(
-      isOpen ? '/api/daily-register/dashboard/filter-options' : null,
-      swrFetcher,
-    );
+  const query = toQueryString({ date, page, ...rowFilters });
   const { data, error, isLoading } = useSWR<Paginated<DailyRegisterDTO>>(
     isOpen ? `/api/daily-register/history${query}` : null,
     swrFetcher,
@@ -165,11 +166,13 @@ function DailyRegisterDateSection({
 
       {isOpen ? (
         <>
-          <div className="grid gap-3 border-b border-slate-300 bg-white p-4 sm:grid-cols-3">
+          <div className="grid gap-3 border-b border-slate-300 bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
             {[
               { label: 'Total permits', value: total },
               { label: 'Day shift', value: day },
               { label: 'Night shift', value: night },
+              { label: 'Live', value: live },
+              { label: 'Suspended', value: suspended },
             ].map((item) => (
               <div key={item.label} className="rounded-lg border border-slate-200 p-3">
                 <p className="text-sm text-slate-500">{item.label}</p>
@@ -181,12 +184,7 @@ function DailyRegisterDateSection({
             <h3 className="mb-3 text-sm font-semibold text-slate-700">
               Filter permits for {formatDisplayDate(date)}
             </h3>
-            {filterOptionsError ? (
-              <p role="alert" className="mb-3 text-sm text-red-600">
-                Could not load permit filter options: {filterOptionsError.message}
-              </p>
-            ) : null}
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-1">
                 <span className="text-sm font-medium text-slate-700">PTW Number</span>
                 <Input
@@ -203,33 +201,6 @@ function DailyRegisterDateSection({
                   onChange={(event) => setPtwType(event.target.value)}
                   options={filterOptions?.ptwTypes ?? []}
                   placeholder="All PTW types"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-sm font-medium text-slate-700">Sub Contractor</span>
-                <Select
-                  value={subContractor}
-                  onChange={(event) => setSubContractor(event.target.value)}
-                  options={filterOptions?.subContractors ?? []}
-                  placeholder="All sub contractors"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-sm font-medium text-slate-700">Shift</span>
-                <Select
-                  value={shiftDayNight}
-                  onChange={(event) => setShiftDayNight(event.target.value)}
-                  options={filterOptions?.shifts ?? []}
-                  placeholder="Day and night"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-sm font-medium text-slate-700">PTW Status</span>
-                <Select
-                  value={ptwStatus}
-                  onChange={(event) => setPtwStatus(event.target.value)}
-                  options={filterOptions?.ptwStatuses ?? []}
-                  placeholder="All statuses"
                 />
               </label>
             </div>
@@ -310,15 +281,38 @@ function DailyRegisterDateSection({
 export function DailyRegisterDashboardView({ initialDate }: { initialDate: string }) {
   const [selectedEntry, setSelectedEntry] = useState<DailyRegisterDTO | null>(null);
   const [openDate, setOpenDate] = useState<string | null>(initialDate);
+  const [subContractor, setSubContractor] = useState('');
+  const [shiftDayNight, setShiftDayNight] = useState('');
+  const [ptwStatus, setPtwStatus] = useState('');
+  const filters: Pick<
+    DailyRegisterDashboardFiltersDTO,
+    'subContractor' | 'shiftDayNight' | 'ptwStatus'
+  > = {
+    subContractor: subContractor || undefined,
+    shiftDayNight: shiftDayNight || undefined,
+    ptwStatus: ptwStatus || undefined,
+  };
+  const filterQuery = toQueryString(filters);
+  const { data: filterOptions, error: filterOptionsError } =
+    useSWR<DailyRegisterDashboardFilterOptionsDTO>(
+      '/api/daily-register/dashboard/filter-options',
+      swrFetcher,
+    );
   const {
     data: dateGroups,
     error: entriesError,
     isLoading: entriesLoading,
-  } = useSWR<DailyRegisterDateGroupDTO[]>('/api/daily-register/dashboard', swrFetcher);
+  } = useSWR<DailyRegisterDateGroupDTO[]>(
+    `/api/daily-register/dashboard${filterQuery}`,
+    swrFetcher,
+  );
   const {
     data: allTimeSummary,
     error: allTimeSummaryError,
-  } = useSWR<DailyRegisterSummaryDTO>('/api/daily-register/summary', swrFetcher);
+  } = useSWR<DailyRegisterSummaryDTO>(
+    `/api/daily-register/summary${filterQuery}`,
+    swrFetcher,
+  );
   return (
     <>
       <PageHeader
@@ -331,11 +325,48 @@ export function DailyRegisterDashboardView({ initialDate }: { initialDate: strin
           Could not load overall dashboard totals: {allTimeSummaryError.message}
         </p>
       ) : null}
+      <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Filter dashboard</h2>
+        {filterOptionsError ? (
+          <p role="alert" className="mb-3 text-sm text-red-600">
+            Could not load dashboard filter options: {filterOptionsError.message}
+          </p>
+        ) : null}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Sub Contractor</span>
+            <Select
+              value={subContractor}
+              onChange={(event) => setSubContractor(event.target.value)}
+              options={filterOptions?.subContractors ?? []}
+              placeholder="All sub contractors"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Shift</span>
+            <Select
+              value={shiftDayNight}
+              onChange={(event) => setShiftDayNight(event.target.value)}
+              options={filterOptions?.shifts ?? []}
+              placeholder="Day and night"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">PTW Status</span>
+            <Select
+              value={ptwStatus}
+              onChange={(event) => setPtwStatus(event.target.value)}
+              options={filterOptions?.ptwStatuses ?? []}
+              placeholder="All statuses"
+            />
+          </label>
+        </div>
+      </section>
       <section className="mb-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
           All daily tracking records
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-500">Total permits</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">
@@ -354,6 +385,18 @@ export function DailyRegisterDashboardView({ initialDate }: { initialDate: strin
               {allTimeSummary?.night ?? 0}
             </p>
           </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-sm text-slate-500">Live</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">
+              {allTimeSummary?.live ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-sm text-slate-500">Suspended</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">
+              {allTimeSummary?.suspended ?? 0}
+            </p>
+          </div>
         </div>
       </section>
 
@@ -365,13 +408,17 @@ export function DailyRegisterDashboardView({ initialDate }: { initialDate: strin
         <EmptyState title="Loading daily register history…" />
       ) : dateGroups?.length ? (
         <div className="space-y-4">
-          {dateGroups.map(({ date, total, day, night }) => (
+          {dateGroups.map(({ date, total, day, night, live, suspended }) => (
             <DailyRegisterDateSection
               key={date}
               date={date}
               total={total}
               day={day}
               night={night}
+              live={live}
+              suspended={suspended}
+              dashboardFilters={filters}
+              filterOptions={filterOptions}
               isOpen={openDate === date}
               onToggle={() => setOpenDate((current) => (current === date ? null : date))}
               onView={setSelectedEntry}

@@ -15,6 +15,8 @@ import type {
 import {
   dailyRegisterInputSchema,
   dailyRegisterDateSchema,
+  DAILY_PTW_STATUSES,
+  DAILY_SHIFTS,
   PERMIT_FIELD_LIST,
   ymdToUtcDate,
 } from '@wms/shared';
@@ -120,6 +122,7 @@ export async function listDailyRegister(date: string, user: SessionUser): Promis
 export async function getDailyRegisterSummary(
   user: SessionUser,
   date?: string,
+  filters: DailyRegisterDashboardFiltersDTO = {},
 ): Promise<DailyRegisterSummaryDTO> {
   assertCanUseDailyRegister(user);
   if (date) dailyRegisterDateSchema.parse(date);
@@ -130,6 +133,7 @@ export async function getDailyRegisterSummary(
       $match: {
         ...(date ? { date } : {}),
         ...(assignedSubContractor ? { subContractor: assignedSubContractor } : {}),
+        ...dailyRegisterDashboardMatch(filters, assignedSubContractor),
       },
     },
     {
@@ -154,11 +158,29 @@ export async function getDailyRegisterSummary(
             ],
           },
         },
+        live: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$ptwStatus', ''] }, regex: /^live/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        suspended: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$ptwStatus', ''] }, regex: /^suspended/i } },
+              1,
+              0,
+            ],
+          },
+        },
       },
     },
-    { $project: { _id: 0, total: 1, day: 1, night: 1 } },
+    { $project: { _id: 0, total: 1, day: 1, night: 1, live: 1, suspended: 1 } },
   ]);
-  return summary ?? { total: 0, day: 0, night: 0 };
+  return summary ?? { total: 0, day: 0, night: 0, live: 0, suspended: 0 };
 }
 
 export async function getDailyRegisterDateNavigation(
@@ -255,10 +277,28 @@ export async function listDailyRegisterDashboard(
             ],
           },
         },
+        live: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$ptwStatus', ''] }, regex: /^live/i } },
+              1,
+              0,
+            ],
+          },
+        },
+        suspended: {
+          $sum: {
+            $cond: [
+              { $regexMatch: { input: { $ifNull: ['$ptwStatus', ''] }, regex: /^suspended/i } },
+              1,
+              0,
+            ],
+          },
+        },
       },
     },
     { $sort: { _id: -1 } },
-    { $project: { _id: 0, date: '$_id', total: 1, day: 1, night: 1 } },
+    { $project: { _id: 0, date: '$_id', total: 1, day: 1, night: 1, live: 1, suspended: 1 } },
   ]);
 }
 
@@ -291,11 +331,9 @@ export async function getDailyRegisterDashboardFilterOptions(
   await connectDb();
   const assignedSubContractor = assignedSubContractorFor(user);
   const scope = assignedSubContractor ? { subContractor: assignedSubContractor } : {};
-  const [ptwTypes, subContractors, shifts, ptwStatuses] = await Promise.all([
+  const [ptwTypes, subContractors] = await Promise.all([
     DailyRegisterEntryModel.distinct('ptwType', scope),
     DailyRegisterEntryModel.distinct('subContractor', scope),
-    DailyRegisterEntryModel.distinct('shiftDayNight', scope),
-    DailyRegisterEntryModel.distinct('ptwStatus', scope),
   ]);
   const clean = (values: unknown[]) =>
     values
@@ -305,8 +343,8 @@ export async function getDailyRegisterDashboardFilterOptions(
   return {
     ptwTypes: clean(ptwTypes),
     subContractors: clean(subContractors),
-    shifts: clean(shifts),
-    ptwStatuses: clean(ptwStatuses),
+    shifts: [...DAILY_SHIFTS],
+    ptwStatuses: [...DAILY_PTW_STATUSES],
   };
 }
 
@@ -338,6 +376,7 @@ export async function listDailyRegisterPermitOptions(
   date: string,
   subContractor: string,
   user: SessionUser,
+  search = '',
 ): Promise<DailyRegisterPermitOptionDTO[]> {
   assertCanUseDailyRegister(user);
   const selectedDate = dailyRegisterDateSchema.parse(date);
@@ -355,15 +394,20 @@ export async function listDailyRegisterPermitOptions(
   const dayStart = ymdToUtcDate(selectedDate);
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
   const permitFields = PERMIT_FIELD_LIST.map((field) => field.key);
+  const permitNumberSearch = search.trim();
   const docs = await PermitModel.find({
     importBatchId: { $exists: false },
     subContractor: new RegExp(`^${escapeRegex(selectedSubContractor)}$`, 'i'),
     status: { $ne: 'Closed' },
     planValidStartDate: { $lt: dayEnd },
     planValidEndDate: { $gte: dayStart },
+    ...(permitNumberSearch
+      ? { newPtwNumber: new RegExp(escapeRegex(permitNumberSearch), 'i') }
+      : {}),
   })
     .select(['srNo', 'createdAt', 'updatedAt', ...permitFields].join(' '))
     .sort({ newPtwNumber: 1, srNo: 1 })
+    .limit(100)
     .lean<PermitDoc[]>();
 
   return docs.flatMap((doc) => {

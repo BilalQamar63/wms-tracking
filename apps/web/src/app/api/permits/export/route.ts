@@ -54,11 +54,8 @@ export const GET = route(async (req) => {
   const user = await requireAdmin();
   const query = exportQuerySchema.parse(searchParamsToObject(req));
   const dropdownValues = await getPermitDropdownValues();
-  const exportPtwTypes = query.exportPtwTypes ?? dropdownValues.newPtwType ?? [];
-  if (
-    exportPtwTypes.length === 0 ||
-    exportPtwTypes.some((ptwType) => !dropdownValues.newPtwType?.includes(ptwType))
-  ) {
+  const exportPtwTypes = query.exportPtwTypes;
+  if (exportPtwTypes?.some((ptwType) => !dropdownValues.newPtwType?.includes(ptwType))) {
     throw badRequest('One or more selected PTW types are no longer configured');
   }
   const { fields, ...filters } = query;

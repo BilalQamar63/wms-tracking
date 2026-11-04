@@ -14,7 +14,9 @@ import {
   Upload,
 } from 'lucide-react';
 import {
+  DAILY_PTW_STATUSES,
   DAILY_REGISTER_FIELDS,
+  DAILY_SHIFTS,
   MAX_PTW_VALIDITY_DAYS,
   addDaysToYmd,
   dailyRegisterInputSchema,
@@ -35,8 +37,10 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/ui/page-header';
+import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
 import { useApprovalContactOptions } from '@/hooks/use-approval-contact-options';
+import { useDebounce } from '@/hooks/use-debounce';
 import { apiFetch, downloadFromApi, swrFetcher, toQueryString } from '@/lib/api-client';
 
 const EMPTY_INPUT: DailyRegisterInput = {};
@@ -146,6 +150,8 @@ export function DailyRegisterView({
   const [formData, setFormData] = useState<DailyRegisterInput>(EMPTY_INPUT);
   const [selectedSubContractor, setSelectedSubContractor] = useState(assignedSubContractor ?? '');
   const [selectedPermitNumber, setSelectedPermitNumber] = useState('');
+  const [permitSearch, setPermitSearch] = useState('');
+  const debouncedPermitSearch = useDebounce(permitSearch);
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -169,6 +175,35 @@ export function DailyRegisterView({
     date ? `/api/daily-register${query}` : null,
     swrFetcher,
   );
+  const [searchText, setSearchText] = useState('');
+  const [filterSubContractor, setFilterSubContractor] = useState('');
+  const [filterShift, setFilterShift] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const contractorFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (data ?? [])
+            .map((entry) => entry.subContractor?.trim())
+            .filter((value): value is string => !!value),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [data],
+  );
+  const filteredEntries = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
+    return (data ?? []).filter((entry) => {
+      if (search && !entry.ptwNumber?.toLowerCase().includes(search)) return false;
+      if (filterSubContractor && entry.subContractor !== filterSubContractor) return false;
+      if (filterShift && entry.shiftDayNight?.toLowerCase() !== filterShift.toLowerCase()) {
+        return false;
+      }
+      if (filterStatus && entry.ptwStatus?.toLowerCase() !== filterStatus.toLowerCase()) {
+        return false;
+      }
+      return true;
+    });
+  }, [data, filterShift, filterStatus, filterSubContractor, searchText]);
   const dateNavigationQuery = date
     ? `/api/daily-register/dates${toQueryString({ date })}`
     : null;
@@ -199,6 +234,7 @@ export function DailyRegisterView({
     setFormData(entryInput(entry, date));
     setSelectedSubContractor(entry.subContractor ?? assignedSubContractor ?? '');
     setSelectedPermitNumber(entry.ptwNumber ?? '');
+    setPermitSearch(entry.ptwNumber ?? '');
     setFormErrors([]);
     setFormOpen(true);
   }, [assignedSubContractor, date]);
@@ -220,6 +256,7 @@ export function DailyRegisterView({
     ? `/api/daily-register/permit-options${toQueryString({
         date,
         subContractor: selectedSubContractor,
+        search: debouncedPermitSearch,
       })}`
     : null;
   const {
@@ -254,16 +291,19 @@ export function DailyRegisterView({
   }, [contractorOptions, contractorOptionsQuery, loadedContractorQuery]);
 
   const dailySummary = useMemo(() => ({
-    permitCount: data?.length ?? 0,
-    dayPermits: data?.filter((entry) => entry.shiftDayNight?.trim().toLowerCase().startsWith('day')).length ?? 0,
-    nightPermits: data?.filter((entry) => entry.shiftDayNight?.trim().toLowerCase().startsWith('night')).length ?? 0,
-  }), [data]);
+    permitCount: filteredEntries.length,
+    dayPermits: filteredEntries.filter((entry) => entry.shiftDayNight?.trim().toLowerCase().startsWith('day')).length,
+    nightPermits: filteredEntries.filter((entry) => entry.shiftDayNight?.trim().toLowerCase().startsWith('night')).length,
+    livePermits: filteredEntries.filter((entry) => entry.ptwStatus?.trim().toLowerCase().startsWith('live')).length,
+    suspendedPermits: filteredEntries.filter((entry) => entry.ptwStatus?.trim().toLowerCase().startsWith('suspended')).length,
+  }), [filteredEntries]);
 
   function openCreate() {
     setEditing(null);
     setFormData(entryInput(null, date));
     setSelectedSubContractor(assignedSubContractor ?? '');
     setSelectedPermitNumber('');
+    setPermitSearch('');
     setFormErrors([]);
     setFormOpen(true);
   }
@@ -288,6 +328,7 @@ export function DailyRegisterView({
   function changeSubContractor(value: string) {
     setSelectedSubContractor(value);
     setSelectedPermitNumber('');
+    setPermitSearch('');
     setFormData((current) => ({
       ...current,
       subContractor: value,
@@ -619,7 +660,7 @@ export function DailyRegisterView({
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
           Selected date — {date ? formatDisplayDate(date) : ''}
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Total permits</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.permitCount}</p>
@@ -631,6 +672,14 @@ export function DailyRegisterView({
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Night shift</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.nightPermits}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Live</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.livePermits}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-slate-500">Suspended</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{dailySummary.suspendedPermits}</p>
         </div>
         </div>
       </section>
@@ -674,11 +723,49 @@ export function DailyRegisterView({
             </div>
           </div>
         </div>
+        <div className="grid gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Search PTW number</span>
+            <Input
+              type="search"
+              placeholder="Search PTW number"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Sub Contractor</span>
+            <Select
+              value={filterSubContractor}
+              onChange={(event) => setFilterSubContractor(event.target.value)}
+              options={contractorFilterOptions}
+              placeholder="All sub contractors"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Shift</span>
+            <Select
+              value={filterShift}
+              onChange={(event) => setFilterShift(event.target.value)}
+              options={DAILY_SHIFTS}
+              placeholder="Day and night"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">PTW Status</span>
+            <Select
+              value={filterStatus}
+              onChange={(event) => setFilterStatus(event.target.value)}
+              options={DAILY_PTW_STATUSES}
+              placeholder="All statuses"
+            />
+          </label>
+        </div>
         {error ? (
           <EmptyState title="Could not load daily register">{error.message}</EmptyState>
         ) : isLoading && !data ? (
           <EmptyState title="Loading daily register…" />
-        ) : data?.length ? (
+        ) : filteredEntries.length ? (
           <>
             <div className="overflow-auto">
               <table className="min-w-max border-collapse text-sm">
@@ -696,7 +783,7 @@ export function DailyRegisterView({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((entry) => (
+                  {filteredEntries.map((entry) => (
                     <tr key={entry.id} className="hover:bg-slate-50">
                       <td className="border border-slate-200 px-3 py-2 font-medium">{entry.srNo}</td>
                       {DAILY_REGISTER_TABLE_FIELDS.map((field) => {
@@ -735,12 +822,14 @@ export function DailyRegisterView({
               </table>
             </div>
             <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
-              {data.length} entries in the {formatDisplayDate(date)} register.
+              {filteredEntries.length} of {data?.length ?? 0} entries in the {formatDisplayDate(date)} register.
             </p>
           </>
         ) : (
-          <EmptyState title="No entries for this date">
-            Add an entry or import the workbook for {date ? formatDisplayDate(date) : 'this date'}.
+          <EmptyState title={data?.length ? 'No entries match these filters' : 'No entries for this date'}>
+            {data?.length
+              ? 'Adjust your search or filters to see register entries.'
+              : `Add an entry or import the workbook for ${date ? formatDisplayDate(date) : 'this date'}.`}
           </EmptyState>
         )}
       </section>
@@ -800,8 +889,18 @@ export function DailyRegisterView({
                 </span>
               )}
             </label>
-            <label className="block space-y-1">
+            <div className="block space-y-1">
               <span className="text-sm font-medium text-slate-700">Permit Number *</span>
+              <Input
+                type="search"
+                placeholder="Search active permit number"
+                value={permitSearch}
+                onChange={(event) => {
+                  setPermitSearch(event.target.value);
+                  setSelectedPermitNumber('');
+                }}
+                disabled={!selectedSubContractor}
+              />
               <select
                 value={selectedPermitNumber}
                 onChange={(event) => changePermit(event.target.value)}
@@ -814,7 +913,7 @@ export function DailyRegisterView({
                     ? 'Select sub contractor first'
                     : permitOptionsLoading
                       ? 'Loading permits…'
-                      : 'Select permit number'}
+                      : 'Select an active permit'}
                 </option>
                 {selectedPermitNumber && !permitOptions?.some((item) => item.permitNumber === selectedPermitNumber) && (
                   <option value={selectedPermitNumber}>{selectedPermitNumber}</option>
@@ -828,12 +927,19 @@ export function DailyRegisterView({
                   Could not load permits: {permitOptionsError.message}
                 </span>
               )}
-              {!permitOptionsLoading && !permitOptionsError && selectedSubContractor && !permitOptions?.length && (
+              {permitOptions?.length === 100 && (
                 <span className="block text-xs text-slate-500">
-                  No active permits for this contractor on {formatDisplayDate(date)}.
+                  Showing the first 100 matches. Refine your search to find other permits.
                 </span>
               )}
-            </label>
+              {!permitOptionsLoading && !permitOptionsError && selectedSubContractor && !permitOptions?.length && (
+                <span className="block text-xs text-slate-500">
+                  {debouncedPermitSearch
+                    ? `No active permits match "${debouncedPermitSearch}" for this contractor on ${formatDisplayDate(date)}.`
+                    : `No active permits for this contractor on ${formatDisplayDate(date)}.`}
+                </span>
+              )}
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {DAILY_REGISTER_FIELDS.filter(

@@ -151,7 +151,7 @@ export function PermitsView({
 
   async function exportExcel(
     fieldKeys: readonly PermitFieldKey[] = selectedExportFields,
-    ptwTypes: readonly string[] = selectedExportPtwTypes,
+    ptwTypes?: readonly string[],
   ) {
     setExporting(true);
     try {
@@ -160,7 +160,7 @@ export function PermitsView({
           ...effectiveFilters,
           ptwType: '',
           fields: fieldKeys.join(','),
-          exportPtwTypes: ptwTypes.join(','),
+          exportPtwTypes: ptwTypes?.join(','),
         })}`,
         'PTW-Register.xlsx',
       );
@@ -247,7 +247,7 @@ export function PermitsView({
       <Modal
         open={exportOptionsOpen}
         title="Export PTW register"
-        description="Choose which fields and PTW types to include in the Excel file."
+        description="Download full Excel includes every matching permit, even if its PTW type is blank or not configured. Download selected applies the field and PTW type selections below."
         onClose={() => {
           if (!exporting) setExportOptionsOpen(false);
         }}
@@ -265,14 +265,14 @@ export function PermitsView({
               variant="secondary"
               loading={exporting}
               disabled={exporting}
-              onClick={() => exportExcel(ALL_FIELD_KEYS, [...availablePtwTypes])}
+              onClick={() => exportExcel(ALL_FIELD_KEYS)}
             >
               Download full Excel
             </Button>
             <Button
               loading={exporting}
               disabled={selectedExportFields.length === 0 || selectedExportPtwTypes.length === 0}
-              onClick={() => exportExcel()}
+              onClick={() => exportExcel(selectedExportFields, selectedExportPtwTypes)}
             >
               Download selected
             </Button>
@@ -376,6 +376,7 @@ export function PermitsView({
               total={data.total}
               limit={data.limit}
               onChange={setPage}
+              showPageInput
             />
           </>
         ) : (

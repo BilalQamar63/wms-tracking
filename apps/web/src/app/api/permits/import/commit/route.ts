@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requireUser } from '@/lib/auth/session';
 import { badRequest } from '@/lib/http/errors';
 import { created, route } from '@/lib/http/response';
+import { MAX_IMPORT_ROWS } from '@/lib/excel/constants';
 import { commitPermitFile } from '@/services/file.service';
 
 export const runtime = 'nodejs';
@@ -20,7 +21,7 @@ const approvalsSchema = z.array(
     ),
   }),
 );
-const addRowsSchema = z.array(z.number().int().positive()).max(5000);
+const addRowsSchema = z.array(z.number().int().positive()).max(MAX_IMPORT_ROWS);
 
 export const POST = route(async (req) => {
   const user = await requireUser();

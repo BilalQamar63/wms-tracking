@@ -9,11 +9,12 @@ export const dynamic = 'force-dynamic';
 
 export const GET = route(async (req) => {
   const user = await requireUser();
-  const { date, subContractor } = z
+  const { date, subContractor, search } = z
     .object({
       date: dailyRegisterDateSchema,
       subContractor: z.string().trim().min(1).max(255),
+      search: z.string().trim().max(100).optional(),
     })
     .parse(searchParamsToObject(req));
-  return ok(await listDailyRegisterPermitOptions(date, subContractor, user));
+  return ok(await listDailyRegisterPermitOptions(date, subContractor, user, search));
 });
