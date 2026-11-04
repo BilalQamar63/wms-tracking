@@ -147,7 +147,7 @@ export async function buildPermitWorkbook(
   // Data rows
   permits.forEach((permit, rowIndex) => {
     const row = sheet.getRow(FIRST_DATA_ROW + rowIndex);
-    row.getCell(1).value = permit.srNo;
+    row.getCell(1).value = rowIndex + 1;
     let certificateText = '';
     selectedFields.forEach((field, index) => {
       if (field.key === 'ptwValidity' && hasValidityColumn) {
