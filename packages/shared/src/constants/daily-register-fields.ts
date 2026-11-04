@@ -40,7 +40,7 @@ export const DAILY_REGISTER_FIELDS = [
   },
   { key: 'ptwValidity', header: 'PTW Validity', type: 'computed', width: 20 },
   { key: 'shiftDayNight', header: 'Shift', type: 'radio', width: 18, options: DAILY_SHIFTS },
-  // { key: 'shiftValidity', header: 'Shift Validity', type: 'radio', width: 20, options: DAILY_SHIFTS },
+  { key: 'shiftValidity', header: 'Shift Validity', type: 'radio', width: 20, options: DAILY_SHIFTS },
   { key: 'workStartTime', header: 'Work Start Time', type: 'time', width: 18 },
   { key: 'workEndTime', header: 'Work End Time', type: 'time', width: 18 },
   { key: 'extendedHours', header: 'Extended Hours', type: 'time', width: 18 },
