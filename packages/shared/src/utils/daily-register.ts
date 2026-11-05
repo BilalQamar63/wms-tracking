@@ -1,3 +1,11 @@
+export function getDailyRegisterShift(workStartTime?: string): 'Day' | 'Night' | undefined {
+  const time = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(workStartTime ?? '');
+  if (!time) return undefined;
+
+  const startMinutes = Number(time[1]) * 60 + Number(time[2]);
+  return startMinutes >= 6 * 60 && startMinutes < 18 * 60 ? 'Day' : 'Night';
+}
+
 export function getDailyRegisterWorkHours(
   startTime?: string,
   endTime?: string,

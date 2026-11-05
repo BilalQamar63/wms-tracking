@@ -319,6 +319,11 @@ export async function exportPermitFile(
     includesAllPtwTypes ? undefined : ptwTypes,
   );
   if (permits.length === 0) throw badRequest('No permits found for the selected filters');
+  if (filters.status === 'Overdue') {
+    permits.forEach((permit) => {
+      permit.status = 'Overdue';
+    });
+  }
   const buffer = await buildPermitWorkbook(permits, fieldKeys, dropdownValues);
   const fileName = `PTW-Register_${timestampForFileName()}.xlsx`;
 

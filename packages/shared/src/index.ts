@@ -7,3 +7,4 @@ export * from './schemas/user.schema';
 export * from './types';
 export * from './utils/date';
 export * from './utils/daily-register';
+export * from './utils/approval-contact';

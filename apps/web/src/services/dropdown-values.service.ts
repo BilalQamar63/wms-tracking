@@ -1,5 +1,6 @@
 import {
   AUTHORIZATION_LIST_DROPDOWN_FIELDS,
+  isApprovalContactEligibleForRole,
   PERMIT_FIELD_LIST,
   type SessionUser,
 } from '@wms/shared';
@@ -56,16 +57,18 @@ export async function getPermitDropdownValues(): Promise<PermitDropdownValues> {
       wmsRole: string;
       instituteName: string;
     }>>();
-  const contactValues = [
-    ...new Set(
-      contacts.map(
-        (contact) =>
-          `${normalizeAuthorizationText(contact.name)} - ${normalizeAuthorizationText(contact.phone)}`,
+  const contactRoles = ['performingAuthority', 'validationBy', 'approvedBy'] as const;
+  for (const role of contactRoles) {
+    options[role] = [
+      ...new Set(
+        contacts
+          .filter((contact) => isApprovalContactEligibleForRole(contact.wmsRole, role))
+          .map(
+            (contact) =>
+              `${normalizeAuthorizationText(contact.name)} - ${normalizeAuthorizationText(contact.phone)}`,
+          ),
       ),
-    ),
-  ];
-  for (const role of ['performingAuthority', 'validationBy', 'approvedBy']) {
-    options[role] = contactValues;
+    ];
   }
   for (const field of AUTHORIZATION_LIST_DROPDOWN_FIELDS) {
     const storedValues = contacts

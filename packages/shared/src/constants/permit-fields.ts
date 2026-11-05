@@ -326,7 +326,7 @@ export const PERMIT_FIELDS = [
   },
   {
     key: 'validationBy',
-    header: 'Validate',
+    header: 'Validate (AA/PI)',
     type: 'select',
     section: 'validity',
     width: 28,
@@ -336,7 +336,7 @@ export const PERMIT_FIELDS = [
 
   {
     key: 'approvedEndorsementByPmc',
-    header: 'Endorsement Approval (PMC)',
+    header: 'PTW Endorsement Approval AAA (PMC)',
     type: 'text',
     section: 'validity',
     width: 30,
@@ -344,7 +344,7 @@ export const PERMIT_FIELDS = [
   },
   {
     key: 'approvedBy',
-    header: 'Approval',
+    header: 'Approval (AA)',
     type: 'select',
     section: 'validity',
     width: 28,

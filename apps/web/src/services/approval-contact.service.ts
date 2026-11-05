@@ -7,7 +7,7 @@ import type {
   Paginated,
   PermitInput,
 } from '@wms/shared';
-import { PERMIT_FIELD_LIST } from '@wms/shared';
+import { isApprovalContactEligibleForRole, PERMIT_FIELD_LIST } from '@wms/shared';
 import { connectDb } from '@/lib/db/mongoose';
 import { badRequest, conflict, notFound } from '@/lib/http/errors';
 import { assertObjectId } from '@/lib/utils/object-id';
@@ -140,13 +140,14 @@ export async function getApprovalContactStats(): Promise<ApprovalContactStatsDTO
 export async function listApprovalContactOptions(): Promise<ApprovalContactOptionDTO[]> {
   await connectDb();
   const docs = await ApprovalContactModel.find({})
-    .select('name phone')
+    .select('name phone wmsRole')
     .sort({ name: 1, phone: 1 })
-    .lean<Array<Pick<ApprovalContactDoc, '_id' | 'name' | 'phone'>>>();
+    .lean<Array<Pick<ApprovalContactDoc, '_id' | 'name' | 'phone' | 'wmsRole'>>>();
   return docs.map((doc) => ({
     id: String(doc._id),
     name: normalizeAuthorizationText(doc.name),
     phone: normalizeAuthorizationText(doc.phone),
+    wmsRole: normalizeAuthorizationText(doc.wmsRole ?? ''),
     displayValue: `${normalizeAuthorizationText(doc.name)} - ${normalizeAuthorizationText(doc.phone)}`,
   }));
 }
@@ -325,26 +326,31 @@ async function assertApprovalContactsCanBeDeleted(
 }
 
 export function createApprovalContactSelectionValidator() {
-  let contactsPromise: Promise<Set<string>> | undefined;
+  let contactsPromise:
+    | Promise<Array<Pick<ApprovalContactDoc, 'name' | 'phone' | 'wmsRole'>>>
+    | undefined;
 
   return async (
-    _role: ApprovalContactRole,
+    role: ApprovalContactRole,
     _subContractor: string | undefined,
     displayValue: string,
   ): Promise<void> => {
     contactsPromise ??= connectDb().then(async () => {
       const contacts = await ApprovalContactModel.find({})
-        .select('name phone')
-        .lean<Array<Pick<ApprovalContactDoc, 'name' | 'phone'>>>();
-      return new Set(
-        contacts.flatMap((contact) => [
-          `${contact.name} - ${contact.phone}`,
-          `${normalizeAuthorizationText(contact.name)} - ${normalizeAuthorizationText(contact.phone)}`,
-        ]),
-      );
+        .select('name phone wmsRole')
+        .lean<Array<Pick<ApprovalContactDoc, 'name' | 'phone' | 'wmsRole'>>>();
+      return contacts;
     });
 
-    if (!(await contactsPromise).has(displayValue)) {
+    const isAvailable = (await contactsPromise).some(
+      (candidate) =>
+        [
+          `${candidate.name} - ${candidate.phone}`,
+          `${normalizeAuthorizationText(candidate.name)} - ${normalizeAuthorizationText(candidate.phone)}`,
+        ].includes(displayValue) &&
+        isApprovalContactEligibleForRole(candidate.wmsRole ?? '', role),
+    );
+    if (!isAvailable) {
       throw badRequest('The selected approval contact is not available');
     }
   };

@@ -15,6 +15,7 @@ import {
   PERMIT_FIELD_LIST,
   getPlanDurationDays,
   getTodayYmd,
+  isApprovalContactEligibleForRole,
   type PermitFieldDef,
   type PermitInput,
 } from '@wms/shared';
@@ -67,7 +68,7 @@ function FieldControl({
   invalid: boolean;
   assignedSubContractor?: string;
   contactValue?: string;
-  contacts?: Array<{ displayValue: string }>;
+  contacts?: Array<{ displayValue: string; wmsRole: string }>;
   contactsLoading: boolean;
   contactsValidating: boolean;
   contactsError?: Error;
@@ -106,6 +107,7 @@ function FieldControl({
         );
       }
       if (field.contactRole) {
+        const contactRole = field.contactRole;
         const contactFieldName = field.key as
           | 'performingAuthority'
           | 'validationBy'
@@ -115,7 +117,15 @@ function FieldControl({
             <input type="hidden" {...register(name)} value={contactValue ?? ''} />
             <SearchableSelect
               id={id}
-              options={[...new Set((contacts ?? []).map((contact) => contact.displayValue))]}
+              options={[
+                ...new Set(
+                  (contacts ?? [])
+                    .filter((contact) =>
+                      isApprovalContactEligibleForRole(contact.wmsRole, contactRole),
+                    )
+                    .map((contact) => contact.displayValue),
+                ),
+              ]}
               disabled={contactsLoading || !!contactsError}
               invalid={invalid}
               value={contactValue ?? ''}
@@ -241,12 +251,14 @@ export function PermitFormFields({
   useEffect(() => {
     if (!contacts || contactsLoading || contactsValidating) return;
     for (const field of PERMIT_FIELD_LIST) {
-      if (!field.contactRole) continue;
+      const contactRole = field.contactRole;
+      if (!contactRole) continue;
       const current = contactValues[field.key as keyof typeof contactValues];
       if (!current) continue;
       const matchingContact = contacts.find(
         (contact) =>
-          normalizeContactValue(contact.displayValue) === normalizeContactValue(current),
+          normalizeContactValue(contact.displayValue) === normalizeContactValue(current) &&
+          isApprovalContactEligibleForRole(contact.wmsRole, contactRole),
       );
       if (!matchingContact) {
         setValue(field.key as keyof PermitInput, '', {

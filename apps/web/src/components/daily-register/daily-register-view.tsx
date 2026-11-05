@@ -21,6 +21,7 @@ import {
   addDaysToYmd,
   dailyRegisterInputSchema,
   formatDisplayDate,
+  getDailyRegisterShift,
   getExtendedHoursValue,
   getDailyRegisterWorkHours,
   getPlanDurationDays,
@@ -472,11 +473,7 @@ export function DailyRegisterView({
       : '';
     const parsed = dailyRegisterInputSchema.safeParse({
       ...formData,
-      shiftDayNight: formData.jobPerformer1Time
-        ? 'Day'
-        : formData.jobPerformer2Time
-          ? 'Night'
-          : '',
+      shiftDayNight: getDailyRegisterShift(workStartTime) ?? '',
       shiftValidity: '',
       workStartTime,
       workEndTime,

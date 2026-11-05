@@ -268,6 +268,11 @@ export async function exportCompanyPermits(
   ]);
   const permits = docs.map(toPermitDTO);
   if (permits.length === 0) throw badRequest('No permits found for the selected filters');
+  if (exportStatus === 'overdue') {
+    permits.forEach((permit) => {
+      permit.status = 'Overdue';
+    });
+  }
   const buffer = await buildPermitWorkbook(permits, fieldKeys, dropdownValues);
   const fileName = `PTW-${sanitizeFileName(mainContractor)}-${sanitizeFileName(subContractor)}-${exportStatus}_${timestampForFileName()}.xlsx`;
 

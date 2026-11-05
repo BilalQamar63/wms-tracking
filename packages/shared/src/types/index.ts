@@ -25,6 +25,7 @@ export interface ApprovalContactOptionDTO {
   id: string;
   name: string;
   phone: string;
+  wmsRole: string;
   displayValue: string;
 }
 
