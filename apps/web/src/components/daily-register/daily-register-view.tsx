@@ -21,7 +21,7 @@ import {
   addDaysToYmd,
   dailyRegisterInputSchema,
   formatDisplayDate,
-  formatExtendedHours,
+  getExtendedHoursValue,
   getDailyRegisterWorkHours,
   getPlanDurationDays,
   formatPlanValidity,
@@ -101,7 +101,7 @@ function entryInput(entry: DailyRegisterDTO | null, date: string): DailyRegister
     const storedValue =
       typeof value === 'string'
         ? field.key === 'extendedHours'
-          ? formatExtendedHours(value)
+          ? String(getExtendedHoursValue(value) || '')
           : value
         : field.key === 'plannedStartDate'
           ? date
@@ -148,6 +148,7 @@ export function DailyRegisterView({
   const [editing, setEditing] = useState<DailyRegisterDTO | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formData, setFormData] = useState<DailyRegisterInput>(EMPTY_INPUT);
+  const [formDate, setFormDate] = useState(() => getTodayYmd(new Date(), appTimeZone));
   const [selectedSubContractor, setSelectedSubContractor] = useState(assignedSubContractor ?? '');
   const [selectedPermitNumber, setSelectedPermitNumber] = useState('');
   const [permitSearch, setPermitSearch] = useState('');
@@ -231,13 +232,14 @@ export function DailyRegisterView({
 
   const openEdit = useCallback((entry: DailyRegisterDTO) => {
     setEditing(entry);
-    setFormData(entryInput(entry, date));
+    setFormDate(entry.date);
+    setFormData(entryInput(entry, entry.date));
     setSelectedSubContractor(entry.subContractor ?? assignedSubContractor ?? '');
     setSelectedPermitNumber(entry.ptwNumber ?? '');
     setPermitSearch(entry.ptwNumber ?? '');
     setFormErrors([]);
     setFormOpen(true);
-  }, [assignedSubContractor, date]);
+  }, [assignedSubContractor]);
   useEffect(() => {
     if (!initialEditId || handledEditId === initialEditId || !data) return;
     const entry = data.find((item) => item.id === initialEditId);
@@ -245,7 +247,7 @@ export function DailyRegisterView({
     setHandledEditId(initialEditId);
   }, [data, handledEditId, initialEditId, openEdit]);
   const permitContractorsQuery = formOpen
-    ? `/api/daily-register/permit-contractors${toQueryString({ date })}`
+    ? `/api/daily-register/permit-contractors${toQueryString({ date: formDate })}`
     : null;
   const {
     data: permitContractors,
@@ -254,7 +256,7 @@ export function DailyRegisterView({
   } = useSWR<string[]>(permitContractorsQuery, swrFetcher);
   const permitOptionsQuery = formOpen && selectedSubContractor
     ? `/api/daily-register/permit-options${toQueryString({
-        date,
+      date: formDate,
         subContractor: selectedSubContractor,
         search: debouncedPermitSearch,
       })}`
@@ -299,8 +301,10 @@ export function DailyRegisterView({
   }), [filteredEntries]);
 
   function openCreate() {
+    const today = getTodayYmd(new Date(), appTimeZone);
     setEditing(null);
-    setFormData(entryInput(null, date));
+    setFormDate(today);
+    setFormData(entryInput(null, today));
     setSelectedSubContractor(assignedSubContractor ?? '');
     setSelectedPermitNumber('');
     setPermitSearch('');
@@ -321,8 +325,86 @@ export function DailyRegisterView({
     setFormData((current) => ({
       ...current,
       [personKey]: value,
-      ...(value && !current[timeKey] ? { [timeKey]: timeAtSelection } : {}),
+      [timeKey]: value ? current[timeKey] || timeAtSelection : '',
+      ...(personKey === 'jobPerformer1' && !value ? { extendedHours: '' } : {}),
     }));
+  }
+
+  function renderPerformerField(
+    personKey: 'jobPerformer1' | 'jobPerformer2',
+    timeKey: 'jobPerformer1Time' | 'jobPerformer2Time',
+    heading: string,
+  ) {
+    const currentPerson = formData[personKey] ?? '';
+    const currentTime = formData[timeKey] ?? '';
+    const extraHours = Number(formData.extendedHours ?? 0);
+    const extendedEndMinutes = 17 * 60 + 59 + extraHours * 60;
+    const extendedEnd = `${String(Math.floor(extendedEndMinutes / 60)).padStart(2, '0')}:${String(extendedEndMinutes % 60).padStart(2, '0')}`;
+
+    return (
+      <div className="space-y-3">
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">{heading}</span>
+          <select
+            value={currentPerson}
+            onChange={(event) => setPersonAndTime(personKey, timeKey, event.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          >
+            <option value="">
+              {authorizedPeopleLoading ? 'Loading authorized people…' : 'Select authorized person'}
+            </option>
+            {currentPerson && !authorizedPeople?.some((person) => person.displayValue === currentPerson) && (
+              <option value={currentPerson}>{currentPerson}</option>
+            )}
+            {authorizedPeople?.map((person) => (
+              <option key={person.id} value={person.displayValue}>{person.displayValue}</option>
+            ))}
+          </select>
+          {authorizedPeopleError && (
+            <span className="block text-xs text-red-600">
+              Could not load Authorized People: {authorizedPeopleError.message}
+            </span>
+          )}
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">{heading} time</span>
+          <Input
+            type="time"
+            value={currentTime}
+            onChange={(event) => setField(timeKey, event.target.value)}
+          />
+          <span className="block text-xs text-slate-500">
+            Date: {formDate ? formatDisplayDate(formDate) : 'Choose a date'}
+          </span>
+          {!currentTime && (
+            <span className="block text-xs text-slate-500">
+              Current time: {liveTime} (auto-filled when a person is selected)
+            </span>
+          )}
+        </label>
+        {personKey === 'jobPerformer1' && currentPerson && (
+          <>
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">Extended Hours</span>
+              <select
+                value={formData.extendedHours ?? ''}
+                onChange={(event) => setField('extendedHours', event.target.value)}
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              >
+                <option value="">No extended hours</option>
+                {[1, 2, 3, 4].map((hours) => (
+                  <option key={hours} value={String(hours)}>{hours} hour{hours > 1 ? 's' : ''}</option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-slate-500">
+              Day shift is 06:00–17:59
+              {extraHours ? `; with ${extraHours} extra hour${extraHours > 1 ? 's' : ''}, it ends at ${extendedEnd}` : ''}.
+            </p>
+          </>
+        )}
+      </div>
+    );
   }
 
   function changeSubContractor(value: string) {
@@ -342,8 +424,8 @@ export function DailyRegisterView({
       ptwType: '',
       ptwNumber: '',
       certificateTypes: '',
-      plannedStartDate: date,
-      plannedEndDate: addDaysToYmd(date, MAX_PTW_VALIDITY_DAYS - 1),
+      plannedStartDate: formDate,
+      plannedEndDate: addDaysToYmd(formDate, MAX_PTW_VALIDITY_DAYS - 1),
     }));
   }
 
@@ -375,7 +457,34 @@ export function DailyRegisterView({
       setFormErrors(['Select a sub contractor and permit number before saving']);
       return;
     }
-    const parsed = dailyRegisterInputSchema.safeParse(formData);
+    const workStartTime = formData.jobPerformer1Time || formData.jobPerformer2Time || '';
+    const extendedHours = formData.jobPerformer1Time
+      ? getExtendedHoursValue(formData.extendedHours)
+      : 0;
+    const startMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(workStartTime);
+    const workEndTime = startMatch
+      ? (() => {
+          const endMinutes =
+            (Number(startMatch[1]) * 60 + Number(startMatch[2]) + (12 + extendedHours) * 60) %
+            (24 * 60);
+          return `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
+        })()
+      : '';
+    const parsed = dailyRegisterInputSchema.safeParse({
+      ...formData,
+      shiftDayNight: formData.jobPerformer1Time
+        ? 'Day'
+        : formData.jobPerformer2Time
+          ? 'Night'
+          : '',
+      shiftValidity: '',
+      workStartTime,
+      workEndTime,
+      extendedHours: formData.jobPerformer1 ? formData.extendedHours ?? '' : '',
+      ptwStatus: formData.jobPerformer1Time || formData.jobPerformer2Time
+        ? 'Live'
+        : 'Suspended',
+    });
     if (!parsed.success) {
       setFormErrors(parsed.error.issues.map((issue) => issue.message));
       return;
@@ -389,12 +498,15 @@ export function DailyRegisterView({
           body: JSON.stringify(
             editing
               ? {
-                  ...parsed.data,
-                  subContractor: selectedSubContractor,
-                  ...(selectedPermitNumber ? { ptwNumber: selectedPermitNumber } : {}),
+                  date: formDate,
+                  data: {
+                    ...parsed.data,
+                    subContractor: selectedSubContractor,
+                    ...(selectedPermitNumber ? { ptwNumber: selectedPermitNumber } : {}),
+                  },
                 }
               : {
-                  date,
+                  date: formDate,
                   data: {
                     ...parsed.data,
                     subContractor: selectedSubContractor,
@@ -406,7 +518,8 @@ export function DailyRegisterView({
       );
       toast.success(editing ? 'Daily register entry updated' : 'Daily register entry added');
       setFormOpen(false);
-      await mutate();
+      changeDate(formDate);
+      await globalMutate(`/api/daily-register${toQueryString({ date: formDate })}`);
       await Promise.all([
         globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/history')),
         globalMutate((key) => typeof key === 'string' && key.startsWith('/api/daily-register/dashboard')),
@@ -837,7 +950,7 @@ export function DailyRegisterView({
       <Modal
         open={formOpen}
         title={editing ? `Edit daily entry · Sr No ${editing.srNo}` : 'Add daily permit entry'}
-        description={`Register date: ${date ? formatDisplayDate(date) : ''}. Planned dates must include the selected register date.`}
+        description={`Register date: ${formDate ? formatDisplayDate(formDate) : ''}. Planned dates must include the selected register date.`}
         onClose={() => !saving && setFormOpen(false)}
         size="xl"
         footer={
@@ -885,7 +998,7 @@ export function DailyRegisterView({
               )}
               {!permitContractorsLoading && !permitContractorsError && !permitContractors?.length && (
                 <span className="block text-xs text-slate-500">
-                  No contractors have active permits for {formatDisplayDate(date)}.
+                  No contractors have active permits for {formatDisplayDate(formDate)}.
                 </span>
               )}
             </label>
@@ -935,8 +1048,8 @@ export function DailyRegisterView({
               {!permitOptionsLoading && !permitOptionsError && selectedSubContractor && !permitOptions?.length && (
                 <span className="block text-xs text-slate-500">
                   {debouncedPermitSearch
-                    ? `No active permits match "${debouncedPermitSearch}" for this contractor on ${formatDisplayDate(date)}.`
-                    : `No active permits for this contractor on ${formatDisplayDate(date)}.`}
+                    ? `No active permits match "${debouncedPermitSearch}" for this contractor on ${formatDisplayDate(formDate)}.`
+                    : `No active permits for this contractor on ${formatDisplayDate(formDate)}.`}
                 </span>
               )}
             </div>
@@ -947,66 +1060,119 @@ export function DailyRegisterView({
                 field.type !== 'computed' &&
                 field.key !== 'subContractor' &&
                 field.key !== 'ptwNumber' &&
-                !['permitIssuerTime', 'jobPerformer1Time', 'jobPerformer2Time'].includes(field.key),
+                ![
+                  'permitIssuerTime',
+                  'jobPerformer1Time',
+                  'jobPerformer2Time',
+                  'shiftDayNight',
+                  'shiftValidity',
+                  'workStartTime',
+                  'workEndTime',
+                  'workHours',
+                  'extendedHours',
+                  'ptwStatus',
+                ].includes(field.key),
             ).map((field) => {
-              const personTimeField = {
-                permitIssuer: 'permitIssuerTime',
-                jobPerformer1: 'jobPerformer1Time',
-                jobPerformer2: 'jobPerformer2Time',
-              } as const;
-              if (field.key in personTimeField) {
-                const timeKey = personTimeField[field.key as keyof typeof personTimeField];
+              if (field.key === 'jobPerformer1') {
+                return (
+                  <div key={field.key} className="sm:border-r sm:border-slate-300 sm:pr-4">
+                    {renderPerformerField('jobPerformer1', 'jobPerformer1Time', 'Job Performer-1 (Day Shift)')}
+                  </div>
+                );
+              }
+              if (field.key === 'jobPerformer2') {
+                const shift = formData.jobPerformer1Time
+                  ? 'Day'
+                  : formData.jobPerformer2Time
+                    ? 'Night'
+                    : 'Not set';
+                const status = formData.jobPerformer1Time || formData.jobPerformer2Time
+                  ? 'Live'
+                  : 'Suspended';
+                return (
+                  <div key={field.key} className="contents">
+                    <div className="sm:pl-4">
+                      {renderPerformerField('jobPerformer2', 'jobPerformer2Time', 'Job Performer-2 (Night Shift)')}
+                    </div>
+                    <p className="sm:col-span-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      Shift: <span className="font-medium text-slate-800">{shift}</span>
+                      {' · '}PTW Status: <span className="font-medium text-slate-800">{status}</span>
+                    </p>
+                  </div>
+                );
+              }
+              if (field.key === 'permitIssuer') {
+                const timeKey = 'permitIssuerTime';
                 const currentPerson = formData[field.key] ?? '';
                 const currentTime = formData[timeKey] ?? '';
                 return (
-                  <div key={field.key} className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
-                    <label className="block space-y-1">
-                      <span className="text-sm font-medium text-slate-700">
-                        {field.header}
-                      </span>
-                      <select
-                        value={currentPerson}
-                        onChange={(event) =>
-                          setPersonAndTime(field.key, timeKey, event.target.value)
-                        }
-                        className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-                      >
-                        <option value="">
-                          {authorizedPeopleLoading ? 'Loading authorized people…' : 'Select authorized person'}
-                        </option>
-                        {currentPerson && !authorizedPeople?.some((person) => person.displayValue === currentPerson) && (
-                          <option value={currentPerson}>{currentPerson}</option>
-                        )}
-                        {authorizedPeople?.map((person) => (
-                          <option key={person.id} value={person.displayValue}>
-                            {person.displayValue}
-                          </option>
-                        ))}
-                      </select>
-                      {authorizedPeopleError && (
-                        <span className="block text-xs text-red-600">
-                          Could not load Authorized People: {authorizedPeopleError.message}
-                        </span>
-                      )}
-                    </label>
-                    <label className="block space-y-1">
-                      <span className="text-sm font-medium text-slate-700">
-                        {field.header} time
-                      </span>
+                  <div key={field.key} className="space-y-4 sm:col-span-2">
+                    <label className="block space-y-1 sm:max-w-xs">
+                      <span className="text-sm font-medium text-slate-700">Register Date *</span>
                       <Input
-                        type="time"
-                        value={currentTime}
-                        onChange={(event) => setField(timeKey, event.target.value)}
+                        type="date"
+                        required
+                        value={formDate}
+                        onChange={(event) => {
+                          const nextDate = event.target.value;
+                          setFormDate(nextDate);
+                          setFormData((current) => ({
+                            ...current,
+                            ...(current.plannedStartDate === formDate
+                              ? { plannedStartDate: nextDate }
+                              : {}),
+                            ...(current.plannedEndDate === addDaysToYmd(formDate, MAX_PTW_VALIDITY_DAYS - 1)
+                              ? { plannedEndDate: addDaysToYmd(nextDate, MAX_PTW_VALIDITY_DAYS - 1) }
+                              : {}),
+                          }));
+                        }}
                       />
-                      <span className="block text-xs text-slate-500">
-                        Date: {formatDisplayDate(date)}
-                      </span>
-                      {!currentTime && (
-                        <span className="block text-xs text-slate-500">
-                          Current time: {liveTime} (auto-filled when a person is selected)
-                        </span>
-                      )}
                     </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block space-y-1">
+                        <span className="text-sm font-medium text-slate-700">{field.header}</span>
+                        <select
+                          value={currentPerson}
+                          onChange={(event) =>
+                            setPersonAndTime(field.key, timeKey, event.target.value)
+                          }
+                          className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                        >
+                          <option value="">
+                            {authorizedPeopleLoading ? 'Loading authorized people…' : 'Select authorized person'}
+                          </option>
+                          {currentPerson && !authorizedPeople?.some((person) => person.displayValue === currentPerson) && (
+                            <option value={currentPerson}>{currentPerson}</option>
+                          )}
+                          {authorizedPeople?.map((person) => (
+                            <option key={person.id} value={person.displayValue}>
+                              {person.displayValue}
+                            </option>
+                          ))}
+                        </select>
+                        {authorizedPeopleError && (
+                          <span className="block text-xs text-red-600">
+                            Could not load Authorized People: {authorizedPeopleError.message}
+                          </span>
+                        )}
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-sm font-medium text-slate-700">
+                          {field.header} time
+                        </span>
+                        <Input
+                          type="time"
+                          value={currentTime}
+                          onChange={(event) => setField(timeKey, event.target.value)}
+                        />
+                        <span className="block text-xs text-slate-500">Date: {formatDisplayDate(formDate)}</span>
+                        {!currentTime && (
+                          <span className="block text-xs text-slate-500">
+                            Current time: {liveTime} (auto-filled when a person is selected)
+                          </span>
+                        )}
+                      </label>
+                    </div>
                   </div>
                 );
               }
@@ -1029,7 +1195,8 @@ export function DailyRegisterView({
                     className={`block space-y-1 ${field.key === 'certificateTypes' ? 'sm:col-span-2' : ''}`}
                   >
                     <span className="text-sm font-medium text-slate-700">
-                      {field.header.replace(/\s+/g, ' ')}{('required' in field && field.required) ? ' *' : ''}
+                      {(field.key === 'remarks' ? 'Shift Remark' : field.header).replace(/\s+/g, ' ')}
+                      {('required' in field && field.required) ? ' *' : ''}
                     </span>
                     {field.type === 'radio' ? (
                       <div className="flex min-h-10 flex-wrap items-center gap-x-5 gap-y-2">
@@ -1058,10 +1225,9 @@ export function DailyRegisterView({
                         }
                         required={'required' in field ? field.required : undefined}
                         maxLength={'maxLength' in field ? field.maxLength : undefined}
-                        max={field.key === 'extendedHours' ? '04:00' : field.key === 'plannedEndDate' && formData.plannedStartDate
-                        ? addDaysToYmd(formData.plannedStartDate, MAX_PTW_VALIDITY_DAYS - 1)
-                            : undefined}
-                        step={field.key === 'extendedHours' ? '60' : undefined}
+                        max={field.key === 'plannedEndDate' && formData.plannedStartDate
+                          ? addDaysToYmd(formData.plannedStartDate, MAX_PTW_VALIDITY_DAYS - 1)
+                          : undefined}
                         value={formData[field.key] ?? ''}
                         onChange={(event) => setField(field.key, event.target.value)}
                         disabled={

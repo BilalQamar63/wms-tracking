@@ -1,4 +1,5 @@
-import { dailyRegisterInputSchema } from '@wms/shared';
+import { z } from 'zod';
+import { dailyRegisterDateSchema, dailyRegisterInputSchema } from '@wms/shared';
 import { requireUser } from '@/lib/auth/session';
 import { ok, route } from '@/lib/http/response';
 import {
@@ -11,10 +12,15 @@ export const dynamic = 'force-dynamic';
 
 type Params = { id: string };
 
+const updateSchema = z.object({
+  date: dailyRegisterDateSchema,
+  data: dailyRegisterInputSchema,
+});
+
 export const PUT = route<Params>(async (req, { params }) => {
   const user = await requireUser();
-  const input = dailyRegisterInputSchema.parse(await req.json());
-  return ok(await updateDailyRegisterEntry(params.id, input, user));
+  const { date, data } = updateSchema.parse(await req.json());
+  return ok(await updateDailyRegisterEntry(params.id, date, data, user));
 });
 
 export const DELETE = route<Params>(async (_req, { params }) => {

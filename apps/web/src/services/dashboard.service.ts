@@ -22,6 +22,12 @@ import { PermitModel } from '@/models/Permit';
 
 export type CompanyExportStatus = 'all' | 'active' | 'closed' | 'overdue';
 
+const DASHBOARD_EXPORT_STATUSES = {
+  active: 'Active',
+  closed: 'Closed',
+  overdue: 'Overdue',
+} as const;
+
 interface CompanyAggregateRow {
   _id: { main: string; sub: string };
   mainContractor: string;
@@ -229,6 +235,11 @@ export async function exportCompanyPermits(
 ): Promise<{ buffer: Buffer; fileName: string; rowCount: number }> {
   await connectDb();
 
+  const dropdownValues = await getPermitDropdownValues();
+  const configuredPtwTypes = dropdownValues.newPtwType ?? [];
+  const includesAllPtwTypes =
+    configuredPtwTypes.length === ptwTypes.length &&
+    configuredPtwTypes.every((ptwType) => ptwTypes.includes(ptwType));
   const match = dashboardPermitMatch({ ...filters, status: '', ptwType: '' });
   const conditions: Record<string, unknown>[] = [match.$match];
   conditions.push({
@@ -237,8 +248,10 @@ export async function exportCompanyPermits(
     _dashboardSubContractorKey:
       subContractor === 'Unspecified' ? '' : subContractor.trim().toLowerCase(),
   });
-  if (exportStatus !== 'all') conditions.push({ _dashboardStatus: exportStatus });
-  conditions.push({ newPtwType: { $in: [...ptwTypes] } });
+  if (exportStatus !== 'all') {
+    conditions.push({ _dashboardStatus: DASHBOARD_EXPORT_STATUSES[exportStatus] });
+  }
+  if (!includesAllPtwTypes) conditions.push({ newPtwType: { $in: [...ptwTypes] } });
   const docs = await PermitModel.aggregate([
     ...uniquePermitPipeline(),
     { $match: { $and: conditions } },
@@ -255,7 +268,7 @@ export async function exportCompanyPermits(
   ]);
   const permits = docs.map(toPermitDTO);
   if (permits.length === 0) throw badRequest('No permits found for the selected filters');
-  const buffer = await buildPermitWorkbook(permits, fieldKeys, await getPermitDropdownValues());
+  const buffer = await buildPermitWorkbook(permits, fieldKeys, dropdownValues);
   const fileName = `PTW-${sanitizeFileName(mainContractor)}-${sanitizeFileName(subContractor)}-${exportStatus}_${timestampForFileName()}.xlsx`;
 
   await FileRecordModel.create({

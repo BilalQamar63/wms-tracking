@@ -307,8 +307,19 @@ export async function exportPermitFile(
   fieldKeys?: readonly PermitFieldKey[],
   ptwTypes?: readonly string[],
 ): Promise<{ buffer: Buffer; fileName: string }> {
-  const permits = await findPermitsForExport(filters, filters.batchId, ptwTypes);
-  const buffer = await buildPermitWorkbook(permits, fieldKeys, await getPermitDropdownValues());
+  const dropdownValues = await getPermitDropdownValues();
+  const configuredPtwTypes = dropdownValues.newPtwType ?? [];
+  const includesAllPtwTypes =
+    ptwTypes !== undefined &&
+    configuredPtwTypes.length === ptwTypes.length &&
+    configuredPtwTypes.every((ptwType) => ptwTypes.includes(ptwType));
+  const permits = await findPermitsForExport(
+    filters,
+    filters.batchId,
+    includesAllPtwTypes ? undefined : ptwTypes,
+  );
+  if (permits.length === 0) throw badRequest('No permits found for the selected filters');
+  const buffer = await buildPermitWorkbook(permits, fieldKeys, dropdownValues);
   const fileName = `PTW-Register_${timestampForFileName()}.xlsx`;
 
   const record = await FileRecordModel.create({

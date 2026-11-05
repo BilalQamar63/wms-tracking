@@ -15,7 +15,8 @@ export function getDailyRegisterWorkHours(
   let endMinutes = Number(end[1]) * 60 + Number(end[2]);
   if (endMinutes === startMinutes) return extraHours > 0 ? extraHours : undefined;
   if (endMinutes <= startMinutes) endMinutes += 24 * 60;
-  return (endMinutes - startMinutes) / 60 + extraHours;
+  const duration = (endMinutes - startMinutes) / 60;
+  return duration === 12 + extraHours ? duration : duration + extraHours;
 }
 
 export function getExtendedHoursValue(value?: string): number {

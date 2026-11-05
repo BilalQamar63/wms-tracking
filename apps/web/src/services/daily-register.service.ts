@@ -527,27 +527,37 @@ async function getEntryForUser(id: string, user: SessionUser) {
 
 export async function updateDailyRegisterEntry(
   id: string,
+  date: string,
   input: DailyRegisterInput,
   user: SessionUser,
 ): Promise<DailyRegisterDTO> {
   assertCanUseDailyRegister(user);
   await connectDb();
   const existing = await getEntryForUser(id, user);
-  assertEntryDate(existing.date, input);
+  const selectedDate = dailyRegisterDateSchema.parse(date);
+  assertEntryDate(selectedDate, input);
   const scopedInput = applyAssignment(input, user);
-  await assertUniqueNumber(existing.date, scopedInput.ptwNumber, id);
+  await assertUniqueNumber(selectedDate, scopedInput.ptwNumber, id);
+  const srNo = selectedDate === existing.date
+    ? existing.srNo
+    : await reserveSequence(`daily-register:${selectedDate}`);
   const cleanInput = Object.fromEntries(
     Object.entries(scopedInput).filter(([, value]) => value !== undefined && value !== ''),
   );
-  const unsetClearedFields = Object.fromEntries(
-    Object.entries(scopedInput)
-      .filter(([, value]) => value === '')
-      .map(([key]) => [key, 1]),
-  );
+  const unsetClearedFields = {
+    ...Object.fromEntries(
+      Object.entries(scopedInput)
+        .filter(([, value]) => value === '')
+        .map(([key]) => [key, 1]),
+    ),
+    workStartTime: 1,
+    workEndTime: 1,
+    shiftValidity: 1,
+  };
   const updated = await DailyRegisterEntryModel.findByIdAndUpdate(
     id,
     {
-      $set: { ...cleanInput, updatedBy: user.id },
+      $set: { ...cleanInput, date: selectedDate, srNo, updatedBy: user.id },
       ...(Object.keys(unsetClearedFields).length ? { $unset: unsetClearedFields } : {}),
     },
     { new: true },
