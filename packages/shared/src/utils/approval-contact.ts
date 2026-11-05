@@ -12,11 +12,11 @@ function normalizeWmsRole(wmsRole: string): string {
 }
 
 export function isApprovalContactEligibleForRole(
-  wmsRole: string,
+  wmsRole: string | null | undefined,
   contactRole: ApprovalContactRole,
 ): boolean {
   if (contactRole === 'performingAuthority') return true;
-  const normalizedRole = normalizeWmsRole(wmsRole);
+  const normalizedRole = normalizeWmsRole(wmsRole ?? '');
   return (contactRole === 'validationBy' ? VALIDATION_WMS_ROLES : APPROVAL_WMS_ROLES).has(
     normalizedRole,
   );
